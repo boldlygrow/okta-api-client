@@ -119,7 +119,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 | Requirement | Version                          |
 |-------------|----------------------------------|
 | PHP         | `^8.0`                           |
-| Laravel     | `^8.0`, `^9.0`, `^10.0`, `^11.0`, `^12.0` |
+| Laravel     | `^8.0`, `^9.0`, `^10.0`, `^11.0`, `^12.0`, `^13.0` |
 
 ### Upgrade Guide
 
@@ -128,7 +128,7 @@ See the [changelog](https://github.com/boldlygrow/okta-api-client/tree/main/chan
 ### Add Composer Package
 
 ```plain
-composer require boldlygrow/okta-api-client:^4.0
+composer require boldlygrow/okta-api-client:^5.0
 ```
 
 If you are contributing to this package, see [CONTRIBUTING.md](CONTRIBUTING.md) for instructions on configuring a local composer package with symlinks.

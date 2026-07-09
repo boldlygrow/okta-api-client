@@ -16,17 +16,15 @@
     },
     "require": {
         "php": "^8.0",
-        "illuminate/config": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
-        "illuminate/http": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
-        "illuminate/log": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
-        "illuminate/support": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
+        "illuminate/config": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/log": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
         "boldlygrow/laravel-audit-log": "dev-main"
     },
     "require-dev": {
         "larastan/larastan": "^2.7 || ^3.0",
-        "orchestra/testbench": "^6.23 || ^7.0 || ^8.0 || ^9.0 || ^10.0"
-    },
-    "suggest": {
+        "orchestra/testbench": "^6.23 || ^7.0 || ^8.0 || ^9.0 || ^10.0 || ^11.0"
     },
     "autoload": {
         "psr-4": {
