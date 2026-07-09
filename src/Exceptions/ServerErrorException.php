@@ -1,6 +1,6 @@
 <?php
 
-namespace Provisionesta\Okta\Exceptions;
+namespace BoldlyGrow\Okta\Exceptions;
 
 use Exception;
 

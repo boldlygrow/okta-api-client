@@ -1,6 +1,6 @@
 <?php
 
-namespace Provisionesta\Okta;
+namespace BoldlyGrow\Okta;
 
 use Illuminate\Support\ServiceProvider;
 

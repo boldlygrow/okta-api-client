@@ -12,9 +12,9 @@ We do not maintain a roadmap of feature requests, however we invite you to contr
 
 ## Code Contributions
 
-We have transitioned from issue-first to MR-first development. We will create an issue for any deferred work, however you can start contributing by creating a new `feature/*` or `hotfix/*` branch and create a merge request.
+We have transitioned from issue-first to PR-first development. We will create an issue for any deferred work, however you can start contributing by creating a new `feature/*` or `hotfix/*` branch and create a merge request.
 
-Before assigning your MR to a maintainer, please review the pipeline CI job outputs for any errors and fix anything that appears.
+Before assigning your PR to a maintainer, please review the pipeline CI job outputs for any errors and fix anything that appears.
 
 All merge requests can be assigned to one or all of the maintainers at your discretion. It is helpful to add a comment with any context that the maintainer/reviewer should know or be on the look out for.
 
@@ -34,7 +34,7 @@ mkdir -p laravel${SDK_LARAVEL_VERSION}-pkg-test/packages/provisionesta
 ln -s ~/Code/okta-api-client ~/Code/laravel${SDK_LARAVEL_VERSION}-pkg-test/packages/provisionesta/okta-api-client
 # Custom repository location configuration
 cd ~/Code/laravel${SDK_LARAVEL_VERSION}-pkg-test
-sed -i '.bak' -e 's/seeders\/"/&,\n            "Provisionesta\\\\Okta\\\\": "packages\/provisionesta\/okta-api-client\/src"/g' composer.json
+sed -i '.bak' -e 's/seeders\/"/&,\n            "BoldlyGrow\\\\Okta\\\\": "packages\/provisionesta\/okta-api-client\/src"/g' composer.json
 composer config repositories.okta-api-client '{"type": "path", "url": "packages/provisionesta/okta-api-client"}' --file composer.json
 composer require provisionesta/okta-api-client:dev-main
 php artisan vendor:publish --tag=okta-api-client
@@ -49,7 +49,7 @@ ce ~/Code/my-project-name
 
 mkdir -p packages/provisionesta
 ln -s ~/Code/okta-api-client packages/provisionesta/okta-api-client
-sed -i '.bak' -e 's/seeders\/"/&,\n            "Provisionesta\\\\Okta\\\\": "packages\/provisionesta\/okta-api-client\/src"/g' composer.json
+sed -i '.bak' -e 's/seeders\/"/&,\n            "BoldlyGrow\\\\Okta\\\\": "packages\/provisionesta\/okta-api-client\/src"/g' composer.json
 composer config repositories.okta-api-client '{"type": "path", "url": "packages/provisionesta/okta-api-client"}' --file composer.json
 composer require provisionesta/okta-api-client:dev-main
 php artisan vendor:publish --tag=okta-api-client
@@ -87,7 +87,7 @@ Update the `composer.json` file in your testing application (not the package) to
 "autoload": {
     "psr-4": {
         "App\\": "app/",
-        "Provisionesta\\Okta\\": "packages/provisionesta/okta-api-client/src",
+        "BoldlyGrow\\Okta\\": "packages/provisionesta/okta-api-client/src",
     }
 },
 ```

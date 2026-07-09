@@ -3,28 +3,28 @@
 /**
  * @copyright Jefferson Martin
  * @license MIT <https://spdx.org/licenses/MIT.html>
- * @link https://gitlab.com/provisionesta/okta-api-client
+ * @link https://github.com/boldlygrow/okta-api-client
  */
 
-namespace Provisionesta\Okta;
+namespace BoldlyGrow\Okta;
 
 use Carbon\Carbon;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Provisionesta\Audit\Log;
-use Provisionesta\Okta\Exceptions\BadRequestException;
-use Provisionesta\Okta\Exceptions\ConfigurationException;
-use Provisionesta\Okta\Exceptions\ConflictException;
-use Provisionesta\Okta\Exceptions\ForbiddenException;
-use Provisionesta\Okta\Exceptions\MethodNotAllowedException;
-use Provisionesta\Okta\Exceptions\NotFoundException;
-use Provisionesta\Okta\Exceptions\PreconditionFailedException;
-use Provisionesta\Okta\Exceptions\RateLimitException;
-use Provisionesta\Okta\Exceptions\ServerErrorException;
-use Provisionesta\Okta\Exceptions\UnauthorizedException;
-use Provisionesta\Okta\Exceptions\UnprocessableException;
+use BoldlyGrow\Audit\Log;
+use BoldlyGrow\Okta\Exceptions\BadRequestException;
+use BoldlyGrow\Okta\Exceptions\ConfigurationException;
+use BoldlyGrow\Okta\Exceptions\ConflictException;
+use BoldlyGrow\Okta\Exceptions\ForbiddenException;
+use BoldlyGrow\Okta\Exceptions\MethodNotAllowedException;
+use BoldlyGrow\Okta\Exceptions\NotFoundException;
+use BoldlyGrow\Okta\Exceptions\PreconditionFailedException;
+use BoldlyGrow\Okta\Exceptions\RateLimitException;
+use BoldlyGrow\Okta\Exceptions\ServerErrorException;
+use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
+use BoldlyGrow\Okta\Exceptions\UnprocessableException;
 
 class ApiClient
 {
@@ -33,7 +33,7 @@ class ApiClient
      *
      * Example Usage:
      * ```php
-     * use Provisionesta\Okta\ApiClient;
+     * use BoldlyGrow\Okta\ApiClient;
      * ApiClient::testConnection();
      * ```
      *
@@ -106,7 +106,7 @@ class ApiClient
      *
      * Example Usage:
      * ```php
-     * use Provisionesta\Okta\ApiClient;
+     * use BoldlyGrow\Okta\ApiClient;
      * $response = ApiClient::get(
      *     uri: 'users/' . $id,
      *     data: [
@@ -222,7 +222,7 @@ class ApiClient
      *
      * Example Usage:
      * ```php
-     * use Provisionesta\Okta\ApiClient;
+     * use BoldlyGrow\Okta\ApiClient;
      * $response = ApiClient::post(
      *     uri: 'groups',
      *     data: [
@@ -304,7 +304,7 @@ class ApiClient
      *
      * Example Usage:
      * ```php
-     * use Provisionesta\Okta\ApiClient;
+     * use BoldlyGrow\Okta\ApiClient;
      * $group_id = '00g1ab2c4d4e5f6g7h8i';
      * $response = ApiClient::patch(
      *     uri: 'groups/' . $group_id',
@@ -376,7 +376,7 @@ class ApiClient
      *
      * Example Usage:
      * ```php
-     * use Provisionesta\Okta\ApiClient;
+     * use BoldlyGrow\Okta\ApiClient;
      * $group_id = '00g1ab2c4d4e5f6g7h8i';
      * $response = ApiClient::put(
      *     uri: 'groups/' . $group_id',
@@ -448,7 +448,7 @@ class ApiClient
      *
      * Example Usage:
      * ```php
-     * use Provisionesta\Okta\ApiClient;
+     * use BoldlyGrow\Okta\ApiClient;
      * $group_id = '00g1ab2c4d4e5f6g7h8i';
      * $response = ApiClient::delete(
      *     connection: $okta_organization->connection_config,

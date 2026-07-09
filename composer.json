@@ -1,38 +1,42 @@
 {
-    "name": "provisionesta/okta-api-client",
+    "name": "boldlygrow/okta-api-client",
     "description": "Okta API Client for Laravel",
-    "homepage": "https://gitlab.com/provisionesta/okta-api-client",
+    "homepage": "https://github.com/boldlygrow/okta-api-client",
     "license": "MIT",
     "authors": [
         {
-            "name": "Jefferson Martin",
-            "email": "provisionesta@jeffersonmartin.com"
+            "name": "Jeff Martin",
+            "email": "jeff@boldlygrow.us"
         }
     ],
+    "replace": {
+        "provisionesta/okta-api-client": "self.version",
+        "gitlab-it/okta-sdk": "self.version",
+        "glamstack/okta-sdk": "self.version"
+    },
     "require": {
         "php": "^8.0",
         "illuminate/config": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
         "illuminate/http": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
         "illuminate/log": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
         "illuminate/support": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
-        "provisionesta/audit": "^1.0"
+        "boldlygrow/laravel-audit-log": "dev-main"
     },
     "require-dev": {
         "larastan/larastan": "^2.7 || ^3.0",
         "orchestra/testbench": "^6.23 || ^7.0 || ^8.0 || ^9.0 || ^10.0"
     },
     "suggest": {
-        "provisionesta/okta-laravel-actions": "Collection of Laravel Actions API/Console/Job/Service CRUD classes for Okta apps, groups, and users endpoints."
     },
     "autoload": {
         "psr-4": {
-            "Provisionesta\\Okta\\": "src/"
+            "BoldlyGrow\\Okta\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Provisionesta\\Okta\\OktaApiServiceProvider"
+                "BoldlyGrow\\Okta\\OktaApiServiceProvider"
             ]
         }
     }
