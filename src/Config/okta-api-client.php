@@ -1,7 +1,25 @@
 <?php
 
 return [
+    /**
+     * The URL of your Okta instance
+     *
+     * @example https://example.okta.com
+     * @example https://trial12345678.okta.com
+     */
     'url' => env('OKTA_API_URL'),
+
+    /**
+     * Whether PHP exceptions are thrown if the API experiences an error
+     *
+     * All requests including 4xx and 5xx errors are logged using the audit and
+     * event log, including with ERROR and CRITICAL log levels. If you log level
+     * in Laravel catches the problem with your bug report, then you may not
+     * need these exceptions. If you want to handle problems behind the scenes
+     * without users seeing an error message, then you can disable this.
+     *
+     * @see vendor/boldlygrow/okta-api-client/src/Exceptions
+     */
     'exceptions' => env('OKTA_API_EXCEPTIONS', true),
 
     /**
