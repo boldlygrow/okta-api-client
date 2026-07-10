@@ -49,7 +49,7 @@ class ApiClient
     public static function testConnection(array $connection = []): bool
     {
         $response = self::get(
-            uri: 'org',
+            uri: config('okta-api-client.test_uri'),
             connection: $connection
         );
 

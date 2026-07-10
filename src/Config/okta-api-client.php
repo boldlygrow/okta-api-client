@@ -84,4 +84,13 @@ return [
      */
     'private_key' => env('OKTA_API_PRIVATE_KEY'),
     'private_key_path' => env('OKTA_API_PRIVATE_KEY_PATH'),
+
+    /**
+     * Optional override for the testConnection() probe endpoint
+     *
+     * Defaults to `org`, which requires the okta.orgs.read scope. If your
+     * service app is not granted that scope, point this at an endpoint it can
+     * reach, for example `users?limit=1`.
+     */
+    'test_uri' => env('OKTA_API_TEST_URI', 'org'),
 ];
