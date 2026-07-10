@@ -79,7 +79,8 @@ class ApiClient
 
         $validator = Validator::make($connection, [
             'url' => 'required|url:https',
-            'token' => 'required|alpha_dash|size:42',
+            'token' => 'required_without:client_id|alpha_dash|size:42',
+            'client_id' => 'required_without:token|string',
         ]);
 
         if ($validator->fails()) {
@@ -98,7 +99,10 @@ class ApiClient
             ]));
         }
 
-        return $validator->validated();
+        // Merge validated keys over the source connection so OAuth keys that have no rule here
+        // (client_id, key_source, key_secret, scopes, key_id, etc.) survive to getRequestHeaders()
+        // and ApiToken::create(). $validator->validated() alone would drop them.
+        return array_merge($connection, $validator->validated());
     }
 
     /**
@@ -520,11 +524,17 @@ class ApiClient
         $composer_array = json_decode((string) file_get_contents(base_path('composer.json')), true);
         $package_name = Str::title($composer_array['name']);
 
+        // Use OAuth 2.0 Bearer token when an OAuth service app (client_id) is configured, otherwise fall back to
+        // the legacy SSWS API token. The Bearer token is minted and cached by ApiToken.
+        $authorization = !empty($connection['client_id'])
+            ? 'Bearer ' . ApiToken::create(connection: $connection)
+            : 'SSWS ' . $connection['token'];
+
         return [
-            'Authorization' => 'SSWS ' . $connection['token'],
+            'Authorization' => $authorization,
             'User-Agent' => implode(' ', [
                 $package_name,
-                'provisionesta/okta-api-client',
+                'boldlygrow/okta-api-client',
                 'Laravel/' . app()->version(),
                 'PHP/' . phpversion()
             ])
@@ -971,11 +981,18 @@ class ApiClient
                 case 400:
                     throw new BadRequestException($message);
                 case 401:
-                    $message = implode(' ', [
-                        'The `OKTA_API_TOKEN` has been configured but is invalid.',
-                        '(Reason) This usually happens if it does not exist or expired after 30 days of inactivity.',
-                        '(Solution) Please generate a new API Token and update the variable in your `.env` file.'
-                    ]);
+                    $message = !empty(config('okta-api-client.client_id'))
+                        ? implode(' ', [
+                            'The OAuth access token was rejected.',
+                            '(Reason) It may be expired, or the requested scopes are not granted to the service app.',
+                            '(Solution) Verify the service app\'s granted Okta API scopes and that its public key is',
+                            'registered in the Okta app JWKSet.'
+                        ])
+                        : implode(' ', [
+                            'The `OKTA_API_TOKEN` has been configured but is invalid.',
+                            '(Reason) This usually happens if it does not exist or expired after 30 days of inactivity.',
+                            '(Solution) Please generate a new API Token and update the variable in your `.env` file.'
+                        ]);
                     throw new UnauthorizedException($message);
                 case 403:
                     throw new ForbiddenException($message);

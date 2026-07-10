@@ -2,6 +2,7 @@
 
 namespace BoldlyGrow\Okta;
 
+use BoldlyGrow\Okta\Console\OktaJwkCommand;
 use Illuminate\Support\ServiceProvider;
 
 class OktaApiServiceProvider extends ServiceProvider
@@ -11,6 +12,7 @@ class OktaApiServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->bootRoutes();
+        $this->bootCommands();
         $this->publishConfigFile();
     }
 
@@ -28,6 +30,20 @@ class OktaApiServiceProvider extends ServiceProvider
     protected function bootRoutes()
     {
         //$this->loadRoutesFrom(__DIR__.'/Routes/console.php');
+    }
+
+    /**
+     * Register the package Artisan commands.
+     *
+     * @return void
+     */
+    protected function bootCommands()
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                OktaJwkCommand::class,
+            ]);
+        }
     }
 
     /**
