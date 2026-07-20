@@ -22,7 +22,7 @@
         "illuminate/http": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
         "illuminate/log": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
         "illuminate/support": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0 || ^13.0",
-        "boldlygrow/laravel-audit-log": "dev-main"
+        "boldlygrow/audit-log": "dev-main"
     },
     "require-dev": {
         "larastan/larastan": "^2.7 || ^3.0",

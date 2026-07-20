@@ -9,7 +9,7 @@
 
 namespace BoldlyGrow\Okta;
 
-use BoldlyGrow\Audit\Log;
+use BoldlyGrow\AuditLog\AuditLog;
 use BoldlyGrow\Okta\Exceptions\BadRequestException;
 use BoldlyGrow\Okta\Exceptions\ConfigurationException;
 use BoldlyGrow\Okta\Exceptions\ConflictException;
@@ -53,7 +53,7 @@ class ApiClient
             connection: $connection
         );
 
-        Log::create(
+        AuditLog::create(
             event_type: 'okta.api.test.success',
             level: 'debug',
             message: 'Success',
@@ -83,7 +83,7 @@ class ApiClient
         ]);
 
         if ($validator->fails()) {
-            Log::create(
+            AuditLog::create(
                 errors: $validator->errors()->all(),
                 event_type: 'okta.api.validate.error',
                 level: 'critical',
@@ -165,7 +165,7 @@ class ApiClient
 
         // If the response is a paginated response
         if (self::checkForPagination($response->headers) == true) {
-            Log::create(
+            AuditLog::create(
                 event_type: 'okta.api.get.process.pagination.started',
                 level: 'debug',
                 message: 'Paginated Results Process Started',
@@ -193,7 +193,7 @@ class ApiClient
             $count_records = is_countable($response->data) ? count($response->data) : null;
             $duration_ms_per_record = $count_records ? (int) ($event_ms->diffInMilliseconds() / $count_records) : null;
 
-            Log::create(
+            AuditLog::create(
                 count_records: $count_records,
                 duration_ms: $event_ms,
                 duration_ms_per_record: $duration_ms_per_record,
@@ -761,7 +761,7 @@ class ApiClient
         $method,
         $uri
     ): object {
-        Log::create(
+        AuditLog::create(
             errors: [
                 'code' => $exception->getCode(),
                 'message' => $exception->getMessage(),
@@ -859,7 +859,7 @@ class ApiClient
             $event_ms_per_record = (int) ($event_ms->diffInMilliseconds() / $count_records);
         }
 
-        Log::create(
+        AuditLog::create(
             count_records: $count_records,
             errors: $errors,
             event_ms: $event_ms,
@@ -978,7 +978,7 @@ class ApiClient
             $percent_remaining = round(($remaining / $limit) * 100);
 
             if ($percent_remaining <= 20) {
-                Log::create(
+                AuditLog::create(
                     event_type: 'okta.api.rate-limit.approaching',
                     level: 'critical',
                     message: implode(' ', [
@@ -1017,7 +1017,7 @@ class ApiClient
     ): void {
         if (array_key_exists('x-rate-limit-remaining', $response->headers)) {
             if ($response->headers['x-rate-limit-remaining'] <= 1) {
-                Log::create(
+                AuditLog::create(
                     event_type: 'okta.api.rate-limit.exceeded',
                     level: 'critical',
                     message: implode(' ', [
