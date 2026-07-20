@@ -3,6 +3,7 @@
 /**
  * @copyright Jefferson Martin
  * @license MIT <https://spdx.org/licenses/MIT.html>
+ *
  * @link https://github.com/boldlygrow/okta-api-client
  */
 
@@ -37,11 +38,10 @@ class PublicKeyJwk
     /**
      * Convert an RSA public key PEM file into a JWK array.
      *
-     * @param string $path
-     *      Path to an RSA public key in PEM (SPKI) format.
-     *
-     * @param string|null $kid
-     *      Optional key id. Defaults to the RFC 7638 JWK thumbprint.
+     * @param  string       $path
+     *                             Path to an RSA public key in PEM (SPKI) format.
+     * @param  string|null  $kid
+     *                             Optional key id. Defaults to the RFC 7638 JWK thumbprint.
      *
      * @return array{kty:string,n:string,e:string,use:string,alg:string,kid:string}
      *
@@ -49,10 +49,10 @@ class PublicKeyJwk
      */
     public static function fromPemFile(string $path, ?string $kid = null): array
     {
-        if (!is_readable($path)) {
+        if (! is_readable($path)) {
             throw new ConfigurationException(implode(' ', [
                 'Okta public key error.',
-                '(Reason) The public key file was not found or is not readable at (' . $path . ').'
+                '(Reason) The public key file was not found or is not readable at (' . $path . ').',
             ]));
         }
 
@@ -62,11 +62,10 @@ class PublicKeyJwk
     /**
      * Convert an RSA public key PEM string into a JWK array.
      *
-     * @param string $pem
-     *      An RSA public key in PEM (SPKI) format.
-     *
-     * @param string|null $kid
-     *      Optional key id. Defaults to the RFC 7638 JWK thumbprint.
+     * @param  string       $pem
+     *                            An RSA public key in PEM (SPKI) format.
+     * @param  string|null  $kid
+     *                            Optional key id. Defaults to the RFC 7638 JWK thumbprint.
      *
      * @return array{kty:string,n:string,e:string,use:string,alg:string,kid:string}
      *
@@ -81,17 +80,17 @@ class PublicKeyJwk
                 'Okta public key error.',
                 '(Reason) The provided PEM is not a valid public key.',
                 '(Solution) Pass a public key in PEM/SPKI format (a "-----BEGIN PUBLIC KEY-----" block),',
-                'for example the output of `openssl rsa -in private.pem -pubout`.'
+                'for example the output of `openssl rsa -in private.pem -pubout`.',
             ]));
         }
 
         $details = openssl_pkey_get_details($key);
 
         if (($details['type'] ?? null) !== OPENSSL_KEYTYPE_RSA
-            || !isset($details['rsa']['n'], $details['rsa']['e'])) {
+            || ! isset($details['rsa']['n'], $details['rsa']['e'])) {
             throw new ConfigurationException(implode(' ', [
                 'Okta public key error.',
-                '(Reason) Only RSA public keys are supported (RS256).'
+                '(Reason) Only RSA public keys are supported (RS256).',
             ]));
         }
 
@@ -111,8 +110,6 @@ class PublicKeyJwk
     /**
      * Allow the class to be used as an invokable action.
      *
-     * @param string $pem
-     * @param string|null $kid
      *
      * @return array{kty:string,n:string,e:string,use:string,alg:string,kid:string}
      *
@@ -130,9 +127,6 @@ class PublicKeyJwk
      * whitespace. It provides a stable, deterministic key id.
      *
      * @link https://datatracker.ietf.org/doc/html/rfc7638
-     *
-     * @param string $n
-     * @param string $e
      */
     private static function thumbprint(string $n, string $e): string
     {
@@ -145,8 +139,6 @@ class PublicKeyJwk
 
     /**
      * Base64url encode without padding, per the JWS/JWK spec.
-     *
-     * @param string $bytes
      */
     private static function base64UrlEncode(string $bytes): string
     {

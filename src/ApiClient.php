@@ -3,16 +3,12 @@
 /**
  * @copyright Jefferson Martin
  * @license MIT <https://spdx.org/licenses/MIT.html>
+ *
  * @link https://github.com/boldlygrow/okta-api-client
  */
 
 namespace BoldlyGrow\Okta;
 
-use Carbon\Carbon;
-use Illuminate\Http\Client\RequestException;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use BoldlyGrow\Audit\Log;
 use BoldlyGrow\Okta\Exceptions\BadRequestException;
 use BoldlyGrow\Okta\Exceptions\ConfigurationException;
@@ -25,6 +21,11 @@ use BoldlyGrow\Okta\Exceptions\RateLimitException;
 use BoldlyGrow\Okta\Exceptions\ServerErrorException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
 use BoldlyGrow\Okta\Exceptions\UnprocessableException;
+use Carbon\Carbon;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class ApiClient
 {
@@ -39,10 +40,9 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/api/org/#get-org-settings
      *
-     * @param array $connection (optional)
-     *      An array with `url` and `token`.
-     *      If not set, the `config('okta-api-client')` array will be used that
-     *      uses the OKTA_API_* variables from your .env file.
+     * @param  array  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                             `config('okta-api-client')` array will be used that uses the
+     *                             OKTA_API_* variables from your .env file.
      *
      * @throws ConfigurationException
      */
@@ -68,8 +68,7 @@ class ApiClient
     /**
      * Validate connection config array
      *
-     * @param array $connection
-     *      An array with `url` and `token`.
+     * @param  array  $connection  An array with `url` and `token`.
      */
     private static function validateConnection(array $connection): array
     {
@@ -95,7 +94,7 @@ class ApiClient
             throw new ConfigurationException(implode(' ', [
                 'Okta API configuration validation error.',
                 'This occurred in ' . __METHOD__ . '.',
-                '(Solution) ' . implode(' ', $validator->errors()->all())
+                '(Solution) ' . implode(' ', $validator->errors()->all()),
             ]));
         }
 
@@ -119,20 +118,14 @@ class ApiClient
      * );
      * ```
      *
-     * @param string $uri
-     *      The URI with or without leading slash after `/api/v1/`
+     * @param  string  $uri         The URI with or without leading slash after `/api/v1/`
+     * @param  array   $data        (optional) Query data to apply to GET request
+     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
+     *                              `config('okta-api-client')` array will be used that uses the
+     *                              OKTA_API_* variables from your .env file.
      *
-     * @param array $data (optional)
-     *      Query data to apply to GET request
-     *
-     * @param array $connection (optional)
-     *      An array with `url` and `token`.
-     *      If not set, the `config('okta-api-client')` array will be used that
-     *      uses the OKTA_API_* variables from your .env file.
-     *
-     * @return object
-     *      See parseApiResponse() method. The content and schema of the data
-     *      array can be found in the API documentation for the endpoint.
+     * @return object See parseApiResponse() method. The content and schema of the data array can
+     *                be found in the API documentation for the endpoint.
      */
     public static function get(
         string $uri,
@@ -185,7 +178,7 @@ class ApiClient
             );
 
             // Get paginated URL and use getPaginatedResults to loop through all paginated requests
-            $response->paginated_results  = self::getPaginatedResults(
+            $response->paginated_results = self::getPaginatedResults(
                 connection: $connection,
                 paginated_url: self::generateNextPaginatedResultUrl($response->headers),
                 records: $response->data
@@ -238,20 +231,14 @@ class ApiClient
      * );
      * ```
      *
-     * @param string $uri
-     *      The URI without leading slash after `/api/v1/`
+     * @param  string  $uri         The URI without leading slash after `/api/v1/`
+     * @param  array   $data        (optional) Post Body array
+     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
+     *                              `config('okta-api-client')` array will be used that uses the
+     *                              OKTA_API_* variables from your .env file.
      *
-     * @param array $data (optional)
-     *      Post Body array
-     *
-     * @param array $connection (optional)
-     *      An array with `url` and `token`.
-     *      If not set, the `config('okta-api-client')` array will be used that
-     *      uses the OKTA_API_* variables from your .env file.
-     *
-     * @return object
-     *      See parseApiResponse() method. The content and schema of the data
-     *      array can be found in the API documentation for the endpoint.
+     * @return object See parseApiResponse() method. The content and schema of the data array can
+     *                be found in the API documentation for the endpoint.
      */
     public static function post(
         string $uri,
@@ -320,20 +307,14 @@ class ApiClient
      * );
      * ```
      *
-     * @param string $uri
-     *      The URI without leading slash after `/api/v1/`
+     * @param  string  $uri         The URI without leading slash after `/api/v1/`
+     * @param  array   $data        (optional) Optional request data to send with PUT request
+     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
+     *                              `config('okta-api-client')` array will be used that uses the
+     *                              OKTA_API_* variables from your .env file.
      *
-     * @param array $data (optional)
-     *      Optional request data to send with PUT request
-     *
-     * @param array $connection (optional)
-     *      An array with `url` and `token`.
-     *      If not set, the `config('okta-api-client')` array will be used that
-     *      uses the OKTA_API_* variables from your .env file.
-     *
-     * @return object
-     *      See parseApiResponse() method. The content and schema of the data
-     *      array can be found in the API documentation for the endpoint.
+     * @return object See parseApiResponse() method. The content and schema of the data array can
+     *                be found in the API documentation for the endpoint.
      */
     public static function patch(
         string $uri,
@@ -393,20 +374,14 @@ class ApiClient
      * );
      * ```
      *
-     * @param string $uri
-     *      The URI without leading slash after `/api/v1/`
+     * @param  string  $uri         The URI without leading slash after `/api/v1/`
+     * @param  array   $data        (optional) Optional request data to send with PUT request
+     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
+     *                              `config('okta-api-client')` array will be used that uses the
+     *                              OKTA_API_* variables from your .env file.
      *
-     * @param array $data (optional)
-     *      Optional request data to send with PUT request
-     *
-     * @param array $connection (optional)
-     *      An array with `url` and `token`.
-     *      If not set, the `config('okta-api-client')` array will be used that
-     *      uses the OKTA_API_* variables from your .env file.
-     *
-     * @return object
-     *      See parseApiResponse() method. The content and schema of the data
-     *      array can be found in the API documentation for the endpoint.
+     * @return object See parseApiResponse() method. The content and schema of the data array can
+     *                be found in the API documentation for the endpoint.
      */
     public static function put(
         string $uri,
@@ -461,20 +436,14 @@ class ApiClient
      * );
      * ```
      *
-     * @param string $uri
-     *      The URI without leading slash after `/api/v1/`
+     * @param  string  $uri         The URI without leading slash after `/api/v1/`
+     * @param  array   $data        Optional request data to send with DELETE request
+     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
+     *                              `config('okta-api-client')` array will be used that uses the
+     *                              OKTA_API_* variables from your .env file.
      *
-     * @param array $data
-     *      Optional request data to send with DELETE request
-     *
-     * @param array $connection (optional)
-     *      An array with `url` and `token`.
-     *      If not set, the `config('okta-api-client')` array will be used that
-     *      uses the OKTA_API_* variables from your .env file.
-     *
-     * @return object
-     *      See parseApiResponse() method. The content and schema of the data
-     *      array can be found in the API documentation for the endpoint.
+     * @return object See parseApiResponse() method. The content and schema of the data array can
+     *                be found in the API documentation for the endpoint.
      */
     public static function delete(
         string $uri,
@@ -516,8 +485,7 @@ class ApiClient
     /**
      * Set the request headers for the Okta API request
      *
-     * @param array $connection
-     *      An array with `url` and `token`.
+     * @param  array  $connection  An array with `url` and `token`.
      */
     private static function getRequestHeaders(array $connection): array
     {
@@ -526,7 +494,7 @@ class ApiClient
 
         // Use OAuth 2.0 Bearer token when an OAuth service app (client_id) is configured, otherwise fall back to
         // the legacy SSWS API token. The Bearer token is minted and cached by ApiToken.
-        $authorization = !empty($connection['client_id'])
+        $authorization = ! empty($connection['client_id'])
             ? 'Bearer ' . ApiToken::create(connection: $connection)
             : 'SSWS ' . $connection['token'];
 
@@ -536,8 +504,8 @@ class ApiClient
                 $package_name,
                 'boldlygrow/okta-api-client',
                 'Laravel/' . app()->version(),
-                'PHP/' . phpversion()
-            ])
+                'PHP/' . phpversion(),
+            ]),
         ];
     }
 
@@ -548,56 +516,56 @@ class ApiClient
      * nested array for each value, and converts the single array values into strings and converts to an object for
      * easier and consistent accessibility with the parseApiResponse format.
      *
-     * @param array $header_response
-     * [
-     *     "Date" => array:1 [
-     *       0 => "Sun, 30 Jan 2022 01:18:14 GMT"
-     *     ]
-     *     "Content-Type" => array:1 [
-     *       0 => "application/json"
-     *     ]
-     *     "Transfer-Encoding" => array:1 [
-     *       0 => "chunked"
-     *     ]
-     *     "Connection" => array:1 [
-     *       0 => "keep-alive"
-     *     ]
-     *     "Server" => array:1 [
-     *       0 => "nginx"
-     *     ]
-     *     // ...
-     * ]
+     * @param  array  $header_response
+     *                                  [
+     *                                  "Date" => array:1 [
+     *                                  0 => "Sun, 30 Jan 2022 01:18:14 GMT"
+     *                                  ]
+     *                                  "Content-Type" => array:1 [
+     *                                  0 => "application/json"
+     *                                  ]
+     *                                  "Transfer-Encoding" => array:1 [
+     *                                  0 => "chunked"
+     *                                  ]
+     *                                  "Connection" => array:1 [
+     *                                  0 => "keep-alive"
+     *                                  ]
+     *                                  "Server" => array:1 [
+     *                                  0 => "nginx"
+     *                                  ]
+     *                                  // ...
+     *                                  ]
      *
      * @return array
-     * [
-     *     "Date" => "Sun, 30 Jan 2022 01:11:44 GMT",
-     *     "Content-Type" => "application/json",
-     *     "Transfer-Encoding" => "chunked",
-     *     "Connection" => "keep-alive",
-     *     "Server" => "nginx",
-     *     "Public-Key-Pins-Report-Only" => (truncated),
-     *     "Vary" => "Accept-Encoding",
-     *     "x-okta-request-id" => "A1b2C3D4e5@f6G7H8I9j0k1L2M3",
-     *     "x-xss-protection" => "0",
-     *     "p3p" => "CP="HONK"",
-     *     "x-rate-limit-limit" => "1000",
-     *     "x-rate-limit-remaining" => "998",
-     *     "x-rate-limit-reset" => "1643505155",
-     *     "cache-control" => "no-cache, no-store",
-     *     "pragma" => "no-cache",
-     *     "expires" => "0",
-     *     "content-security-policy" => (truncated),
-     *     "expect-ct" => "report-uri="https://oktaexpectct.report-uri.com/r/t/ct/reportOnly", max-age=0",
-     *     "x-content-type-options" => "nosniff",
-     *     "Strict-Transport-Security" => "max-age=315360000; includeSubDomains",
-     *     "set-cookie" => (truncated)
-     * ]
+     *               [
+     *               "Date" => "Sun, 30 Jan 2022 01:11:44 GMT",
+     *               "Content-Type" => "application/json",
+     *               "Transfer-Encoding" => "chunked",
+     *               "Connection" => "keep-alive",
+     *               "Server" => "nginx",
+     *               "Public-Key-Pins-Report-Only" => (truncated),
+     *               "Vary" => "Accept-Encoding",
+     *               "x-okta-request-id" => "A1b2C3D4e5@f6G7H8I9j0k1L2M3",
+     *               "x-xss-protection" => "0",
+     *               "p3p" => "CP="HONK"",
+     *               "x-rate-limit-limit" => "1000",
+     *               "x-rate-limit-remaining" => "998",
+     *               "x-rate-limit-reset" => "1643505155",
+     *               "cache-control" => "no-cache, no-store",
+     *               "pragma" => "no-cache",
+     *               "expires" => "0",
+     *               "content-security-policy" => (truncated),
+     *               "expect-ct" => "report-uri="https://oktaexpectct.report-uri.com/r/t/ct/reportOnly", max-age=0",
+     *               "x-content-type-options" => "nosniff",
+     *               "Strict-Transport-Security" => "max-age=315360000; includeSubDomains",
+     *               "set-cookie" => (truncated)
+     *               ]
      */
     private static function convertHeadersToArray(array $header_response): array
     {
         return collect($header_response)->transform(function ($item) {
             if (is_array($item)) {
-                return (count($item) > 1 ? $item : $item[0]);
+                return count($item) > 1 ? $item : $item[0];
             } else {
                 return $item;
             }
@@ -610,12 +578,9 @@ class ApiClient
      * If a 'link' header exists, then there is another page to loop
      * <https://mycompany.okta.com/api/v1/apps?after=0oa1ab2c3D4E5F6G7h8i&limit=50>; rel="next"
      *
-     * @param array $headers
-     *      API response headers from Okta request or parsed response.
+     * @param  array  $headers  API response headers from Okta request or parsed response.
      *
-     * @return bool
-     *      True if the response requires multiple pages
-     *      False if response is a single page
+     * @return bool True if the response requires multiple pages, false if response is a single page
      */
     private static function checkForPagination(array $headers): bool
     {
@@ -626,6 +591,7 @@ class ApiClient
                 }
             }
         }
+
         return false;
     }
 
@@ -637,7 +603,7 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/core-okta-api/#pagination
      *
-     * @param array $headers API response headers from Okta request or parsed response.
+     * @param  array  $headers  API response headers from Okta request or parsed response.
      *
      * @return ?string URL string or null if not found
      */
@@ -651,10 +617,12 @@ class ApiClient
                     // After: https://mycompany.okta.com/api/v1/apps?after=0oa1ab2c3D4E5F6G7h8i&limit=50
                     $url = Str::remove('<', $headers['link'][$link_key]);
                     $url = Str::remove('>; rel="next"', $url);
+
                     return $url;
                 }
             }
         }
+
         return null;
     }
 
@@ -663,17 +631,11 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/core-okta-api/#pagination
      *
-     * @param array $connection
-     *      An array with `url` and `token`.
+     * @param  array   $connection     An array with `url` and `token`.
+     * @param  string  $paginated_url  The paginated URL generated in the get() method
+     * @param  array   $records        An array of records from the first page to append to paginated results
      *
-     * @param string $paginated_url
-     *      The paginated URL generated in the get() method
-     *
-     * @param array $records
-     *      An array of records from the first page to append to paginated results
-     *
-     * @return array
-     *      An array of the response objects for each page combined.
+     * @return array An array of the response objects for each page combined.
      */
     private static function getPaginatedResults(
         array $connection,
@@ -717,32 +679,31 @@ class ApiClient
      *
      * @link https://laravel.com/docs/10.x/http-client#making-requests
      *
-     * @param object $response
-     *      Response object from API results
+     * @param  object  $response  Response object from API results
      *
      * @return object
-     *  {
-     *    +"data": {
-     *      +"id": 12345678
-     *      +"name": "Dade Murphy"
-     *      +"username": "z3r0c00l"
-     *      +"state": "active"
-     *    },
-     *    +"headers": [
-     *      "Date" => "Fri, 12 Nov 2021 20:13:55 GMT",
-     *      "Content-Type" => "application/json",
-     *      "Content-Length" => "1623",
-     *      "Connection" => "keep-alive"
-     *    ],
-     *    +"status": {
-     *      +"code": 200
-     *      +"ok": true
-     *      +"successful": true
-     *      +"failed": false
-     *      +"serverError": false
-     *      +"clientError": false
-     *   }
-     * }
+     *                {
+     *                +"data": {
+     *                +"id": 12345678
+     *                +"name": "Dade Murphy"
+     *                +"username": "z3r0c00l"
+     *                +"state": "active"
+     *                },
+     *                +"headers": [
+     *                "Date" => "Fri, 12 Nov 2021 20:13:55 GMT",
+     *                "Content-Type" => "application/json",
+     *                "Content-Length" => "1623",
+     *                "Connection" => "keep-alive"
+     *                ],
+     *                +"status": {
+     *                +"code": 200
+     *                +"ok": true
+     *                +"successful": true
+     *                +"failed": false
+     *                +"serverError": false
+     *                +"clientError": false
+     *                }
+     *                }
      */
     public static function parseApiResponse(object $response): object
     {
@@ -773,32 +734,27 @@ class ApiClient
      *
      * @see https://developer.okta.com/docs/reference/error-codes/
      *
-     * @param \Illuminate\Http\Client\RequestException $exception
-     *      An instance of the exception
-     *
-     * @param string $method
-     *      The upstream method that invoked this method for traceability
-     *      Ex. __METHOD__
-     *
-     * @param string $uri
-     *      HTTP Request URI
+     * @param  RequestException  $exception  An instance of the exception
+     * @param  string            $method     The upstream method that invoked this method for traceability
+     *                                       Ex. __METHOD__
+     * @param  string            $uri        HTTP Request URI
      *
      * @return object
-     *  {
-     *    +"error": {
-     *      +"code": "<string>"
-     *      +"message": "<string>"
-     *      +"method": "<string>"
-     *      +"uri": "<string>"
-     *    }
-     *    +"status": {
-     *      +"code": 400
-     *      +"ok": false
-     *      +"successful": false
-     *      +"failed": true
-     *      +"serverError": false
-     *      +"clientError": true
-     *   }
+     *                {
+     *                +"error": {
+     *                +"code": "<string>"
+     *                +"message": "<string>"
+     *                +"method": "<string>"
+     *                +"uri": "<string>"
+     *                }
+     *                +"status": {
+     *                +"code": 400
+     *                +"ok": false
+     *                +"successful": false
+     *                +"failed": true
+     *                +"serverError": false
+     *                +"clientError": true
+     *                }
      */
     public static function handleException(
         RequestException $exception,
@@ -809,13 +765,13 @@ class ApiClient
             errors: [
                 'code' => $exception->getCode(),
                 'message' => $exception->getMessage(),
-                'trace' => $exception->getTrace()
+                'trace' => $exception->getTrace(),
             ],
             event_type: 'okta.api.' . explode('::', $method)[1] . '.error.http.exception',
             level: 'error',
             message: 'HTTP Response Exception',
             metadata: [
-                'uri' => ltrim($uri, '/')
+                'uri' => ltrim($uri, '/'),
             ],
             method: $method,
             transaction: true
@@ -826,7 +782,7 @@ class ApiClient
                 'code' => $exception->getCode(),
                 'message' => $exception->getMessage(),
                 'method' => $method,
-                'uri' => ltrim($uri, '/')
+                'uri' => ltrim($uri, '/'),
             ],
             'status' => (object) [
                 'code' => $exception->getCode(),
@@ -844,24 +800,17 @@ class ApiClient
      *
      * This method is called from other methods and create log entry and throw exception
      *
-     * @param string $method
-     *      The upstream method that invoked this method for traceability
-     *      Ex. __METHOD__
-     *
-     * @param string $url
-     *      The URL of the API call including the concatenated base URL and URI
-     *
-     * @param object $response
-     *      The raw unformatted HTTP client response
-     *
-     * @param Carbon $event_ms
-     *      A process start timestamp used to calculate duration in ms for logs
+     * @param  string  $method    The upstream method that invoked this method for traceability
+     *                            Ex. __METHOD__
+     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
+     * @param  object  $response  The raw unformatted HTTP client response
+     * @param  Carbon  $event_ms  A process start timestamp used to calculate duration in ms for logs
      */
     private static function logResponse(
         string $method,
         string $url,
         object $response,
-        Carbon $event_ms = null
+        ?Carbon $event_ms = null
     ): void {
         $log_type = [
             200 => ['event_type' => 'success', 'level' => 'debug'],
@@ -919,14 +868,14 @@ class ApiClient
                 'okta',
                 'api',
                 explode('::', $method)[1],
-                $log_type[$response->status->code]['event_type']
+                $log_type[$response->status->code]['event_type'],
             ]),
             level: $log_type[$response->status->code]['level'],
             message: $message,
             metadata: [
                 'okta_request_id' => $response->headers['x-okta-request-id'] ?? null,
                 'rate_limit_remaining' => $response->headers['x-rate-limit-remaining'] ?? null,
-                'url' => $url
+                'url' => $url,
             ],
             method: $method,
             transaction: false
@@ -943,14 +892,9 @@ class ApiClient
      *
      * This method checks whether the .env variable or config value for `OKTA_API_EXCEPTIONS=true`
      *
-     * @param string $method
-     *      The lowercase name of the method that calls this function (ex. `get`)
-     *
-     * @param string $url
-     *      The URL of the API call including the concatenated base URL and URI
-     *
-     * @param object $response
-     *      The HTTP response formatted with $this->parseApiResponse()
+     * @param  string  $method    The lowercase name of the method that calls this function (ex. `get`)
+     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
+     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
      *
      * @throws BadRequestException
      * @throws ConflictException
@@ -981,17 +925,17 @@ class ApiClient
                 case 400:
                     throw new BadRequestException($message);
                 case 401:
-                    $message = !empty(config('okta-api-client.client_id'))
+                    $message = ! empty(config('okta-api-client.client_id'))
                         ? implode(' ', [
                             'The OAuth access token was rejected.',
                             '(Reason) It may be expired, or the requested scopes are not granted to the service app.',
                             '(Solution) Verify the service app\'s granted Okta API scopes and that its public key is',
-                            'registered in the Okta app JWKSet.'
+                            'registered in the Okta app JWKSet.',
                         ])
                         : implode(' ', [
                             'The `OKTA_API_TOKEN` has been configured but is invalid.',
                             '(Reason) This usually happens if it does not exist or expired after 30 days of inactivity.',
-                            '(Solution) Please generate a new API Token and update the variable in your `.env` file.'
+                            '(Solution) Please generate a new API Token and update the variable in your `.env` file.',
                         ]);
                     throw new UnauthorizedException($message);
                 case 403:
@@ -1018,15 +962,10 @@ class ApiClient
      * Create a warning log entry and delay the API request by 10 seconds
      * if the rate limit remaining is less than 20 percent
      *
-     * @param string $method
-     *      The upstream method that invoked this method for traceability
-     *      Ex. __METHOD__
-     *
-     * @param string $url
-     *      The URL of the API call including the concatenated base URL and URI
-     *
-     * @param object $response
-     *      The HTTP response formatted with $this->parseApiResponse()
+     * @param  string  $method    The upstream method that invoked this method for traceability
+     *                            Ex. __METHOD__
+     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
+     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
      */
     private static function checkIfRateLimitApproaching(
         string $method,
@@ -1044,14 +983,14 @@ class ApiClient
                     level: 'critical',
                     message: implode(' ', [
                         'Rate Limit Approaching (' . $percent_remaining . '% Remaining).',
-                        'Sleeping for 10 seconds between requests to let the API catch a breath.'
+                        'Sleeping for 10 seconds between requests to let the API catch a breath.',
                     ]),
                     metadata: [
                         'okta_request_id' => $response->headers['x-okta-request-id'] ?? null,
                         'okta_rate_limit_limit' => $response->headers['x-rate-limit-limit'] ?? null,
                         'okta_rate_limit_percent' => $percent_remaining,
                         'okta_rate_limit_remaining' => $response->headers['x-rate-limit-remaining'] ?? null,
-                        'url' => $url
+                        'url' => $url,
                     ],
                     method: $method,
                     transaction: false
@@ -1066,15 +1005,10 @@ class ApiClient
      * Create an error log entry for an API call if the rate limit remaining is equal to zero (0) or one (1),
      * indicating that this is the last request that will be successful.
      *
-     * @param string $method
-     *      The upstream method that invoked this method for traceability
-     *      Ex. __METHOD__
-     *
-     * @param string $url
-     *      The URL of the API call including the concatenated base URL and URI
-     *
-     * @param object $response
-     *      The HTTP response formatted with $this->parseApiResponse()
+     * @param  string  $method    The upstream method that invoked this method for traceability
+     *                            Ex. __METHOD__
+     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
+     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
      */
     private static function checkIfRateLimitExceeded(
         string $method,
@@ -1088,13 +1022,13 @@ class ApiClient
                     level: 'critical',
                     message: implode(' ', [
                         'Rate Limit Exceeded.',
-                        'This request should be refactored so we do not cause the API any further harm.'
+                        'This request should be refactored so we do not cause the API any further harm.',
                     ]),
                     metadata: [
                         'okta_request_id' => $response->headers['x-okta-request-id'] ?? null,
                         'okta_rate_limit_limit' => $response->headers['x-rate-limit-limit'] ?? null,
                         'okta_rate_limit_remaining' => $response->headers['x-rate-limit-remaining'] ?? null,
-                        'url' => $url
+                        'url' => $url,
                     ],
                     method: $method,
                     transaction: true

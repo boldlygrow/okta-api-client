@@ -3,6 +3,7 @@
 /**
  * @copyright Jefferson Martin
  * @license MIT <https://spdx.org/licenses/MIT.html>
+ *
  * @link https://github.com/boldlygrow/okta-api-client
  */
 
@@ -66,7 +67,7 @@ class OktaJwkCommand extends Command
     /**
      * Generate an RSA key pair, write the private key, and print the public JWK.
      *
-     * @param string|null $kid
+     * @param  string|null  $kid  Public Key ID
      */
     private function generateAndPrint(?string $kid): int
     {
@@ -107,7 +108,7 @@ class OktaJwkCommand extends Command
     }
 
     /**
-     * @param array<string, string> $jwk
+     * @param  array<string, string>  $jwk
      */
     private static function toJson(array $jwk): string
     {

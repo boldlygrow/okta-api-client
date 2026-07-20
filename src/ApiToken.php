@@ -3,19 +3,20 @@
 /**
  * @copyright Jefferson Martin
  * @license MIT <https://spdx.org/licenses/MIT.html>
+ *
  * @link https://github.com/boldlygrow/okta-api-client
  */
 
 namespace BoldlyGrow\Okta;
 
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use BoldlyGrow\Audit\Log;
 use BoldlyGrow\Okta\Exceptions\ConfigurationException;
 use BoldlyGrow\Okta\Exceptions\ScopeException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 /**
  * Okta API Authentication Token Generator (OAuth 2.0 for Okta / private_key_jwt)
@@ -55,9 +56,13 @@ class ApiToken
 {
     // Standard parameters for the Client Credentials + private_key_jwt exchange with the Okta org auth server.
     public const AUTH_GRANT_TYPE = 'client_credentials';
+
     public const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
+
     public const TOKEN_ENDPOINT_PATH = '/oauth2/v1/token';
+
     public const DEFAULT_ALGORITHM = 'RS256';
+
     public const JWT_TYPE = 'JWT';
 
     // Cache TTL in seconds. Okta access tokens live 3600s; 3540 leaves a 60s safety margin.
@@ -66,15 +71,14 @@ class ApiToken
     /**
      * Create (or return a cached) Okta API access token for the requested scopes.
      *
-     * @param string|null $scope
-     *      A required space-delimited OAuth scope string (ex. 'okta.users.read' or
-     *      'okta.users.read okta.groups.read'). There is no config or environment default; a ScopeException
-     *      is thrown if it is empty. Nullable only so the caller can forward a missing value and receive that
-     *      exception rather than a type error.
-     *
-     * @param array $connection (optional)
-     *      An array with `url`, `client_id`, either `private_key` or `private_key_path`, plus optional `key_id`.
-     *      If not set, the `config('okta-api-client')` array is used.
+     * @param  string|null  $scope
+     *                                   A required space-delimited OAuth scope string (ex. 'okta.users.read' or
+     *                                   'okta.users.read okta.groups.read'). There is no config or environment default; a ScopeException
+     *                                   is thrown if it is empty. Nullable only so the caller can forward a missing value and receive that
+     *                                   exception rather than a type error.
+     * @param  array        $connection  (optional)
+     *                                   An array with `url`, `client_id`, either `private_key` or `private_key_path`, plus optional `key_id`.
+     *                                   If not set, the `config('okta-api-client')` array is used.
      *
      * @throws ConfigurationException
      * @throws ScopeException
@@ -130,13 +134,12 @@ class ApiToken
     /**
      * Validate that the required OAuth keys exist in the connection array.
      *
-     * @param array $connection
      *
      * @throws ConfigurationException
      */
     private static function validateConnectionArray(array $connection): array
     {
-        $connection_config = !empty($connection) ? $connection : config('okta-api-client');
+        $connection_config = ! empty($connection) ? $connection : config('okta-api-client');
 
         $validator = Validator::make(
             data: $connection_config,
@@ -162,7 +165,7 @@ class ApiToken
             throw new ConfigurationException(implode(' ', [
                 'Okta API OAuth configuration validation error.',
                 'This occurred in ' . __METHOD__ . '.',
-                '(Solution) ' . $validator->messages()->first()
+                '(Solution) ' . $validator->messages()->first(),
             ]));
         }
 
@@ -177,7 +180,6 @@ class ApiToken
      * more space-delimited scopes may be passed (ex. 'okta.users.read' or 'okta.users.read okta.groups.read'). This
      * is only reached when authenticating with OAuth; the SSWS token path never calls ApiToken and ignores scope.
      *
-     * @param string|null $scope
      *
      * @throws ScopeException
      */
@@ -201,7 +203,7 @@ class ApiToken
                 'Okta API OAuth error.',
                 '(Reason) ' . $reason,
                 '(Solution) Pass the `scope` argument on the request, for example',
-                "ApiClient::get(uri: 'users', scope: 'okta.users.read')."
+                "ApiClient::get(uri: 'users', scope: 'okta.users.read').",
             ]));
         }
 
@@ -214,18 +216,17 @@ class ApiToken
      * Precedence: an inline `private_key` is used when set, otherwise `private_key_path` is read from disk. This is
      * called only on a token cache miss.
      *
-     * @param array $connection
      *
      * @throws ConfigurationException
      */
     private static function getPrivateKeyContents(array $connection): string
     {
-        if (!empty($connection['private_key'])) {
+        if (! empty($connection['private_key'])) {
             $private_key = (string) $connection['private_key'];
-        } elseif (!empty($connection['private_key_path'])) {
+        } elseif (! empty($connection['private_key_path'])) {
             $path = self::expandHomeDirectory((string) $connection['private_key_path']);
 
-            if (!is_readable($path)) {
+            if (! is_readable($path)) {
                 $reason = 'The private key file was not found or is not readable at (' . $path . ').';
 
                 Log::create(
@@ -239,7 +240,7 @@ class ApiToken
 
                 throw new ConfigurationException(implode(' ', [
                     'Okta API OAuth configuration validation error.',
-                    '(Reason) ' . $reason
+                    '(Reason) ' . $reason,
                 ]));
             }
 
@@ -249,7 +250,7 @@ class ApiToken
                 'Okta API OAuth configuration validation error.',
                 '(Reason) No private key was provided.',
                 '(Solution) Set `private_key` (an inline PEM string) or `private_key_path` (a PEM file path) in the',
-                'connection array or config.'
+                'connection array or config.',
             ]));
         }
 
@@ -270,7 +271,7 @@ class ApiToken
 
             throw new ConfigurationException(implode(' ', [
                 'Okta API OAuth configuration validation error.',
-                '(Reason) ' . $reason
+                '(Reason) ' . $reason,
             ]));
         }
 
@@ -279,13 +280,12 @@ class ApiToken
 
     /**
      * Expand a leading ~ to the current user's home directory.
-     *
-     * @param string $path
      */
     private static function expandHomeDirectory(string $path): string
     {
         if (str_starts_with($path, '~/') || $path === '~') {
             $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
+
             return $home . substr($path, 1);
         }
 
@@ -297,18 +297,15 @@ class ApiToken
      *
      * @link https://developer.okta.com/docs/guides/implement-oauth-for-okta-serviceapp/main/#create-and-sign-the-jwt
      *
-     * @param string $url
-     *      The Okta org base URL (ex. https://your-org.okta.com)
-     *
-     * @param string $client_id
-     *      The service app client_id (used for both `iss` and `sub`)
-     *
-     * @param string|null $key_id
-     *      The `kid` of the registered public key. Included in the JWT header when set so Okta can select the
-     *      correct verification key from the app's JWKSet.
-     *
-     * @param string $private_key
-     *      PEM-formatted RSA private key
+     * @param  string       $url
+     *                                    The Okta org base URL (ex. https://your-org.okta.com)
+     * @param  string       $client_id
+     *                                    The service app client_id (used for both `iss` and `sub`)
+     * @param  string|null  $key_id
+     *                                    The `kid` of the registered public key. Included in the JWT header when set so Okta can select the
+     *                                    correct verification key from the app's JWKSet.
+     * @param  string       $private_key
+     *                                    PEM-formatted RSA private key
      *
      * @throws ConfigurationException
      */
@@ -349,8 +346,6 @@ class ApiToken
      * Uses a dedicated $signature output variable (rather than reusing the private key variable as the
      * openssl_sign() output reference) so the intent is explicit and safe to refactor.
      *
-     * @param string $signing_input
-     * @param string $private_key
      *
      * @throws ConfigurationException
      */
@@ -396,7 +391,6 @@ class ApiToken
      * mapped here because openssl_sign() emits a DER-encoded ECDSA signature that must be converted to the raw
      * R||S concatenation the JWS spec requires. Use an RSA key, or extend this method with that conversion.
      *
-     * @param string $algorithm
      *
      * @throws ConfigurationException
      */
@@ -414,8 +408,6 @@ class ApiToken
 
     /**
      * Base64url encode without padding, per the JWS spec.
-     *
-     * @param string $input
      */
     private static function base64UrlEncode(string $input): string
     {
@@ -426,10 +418,6 @@ class ApiToken
      * Exchange the signed client assertion for a scoped access token at the Okta org /token endpoint.
      *
      * @link https://developer.okta.com/docs/guides/implement-oauth-for-okta-serviceapp/main/#get-an-access-token
-     *
-     * @param string $url
-     * @param string $scopes
-     * @param string $assertion
      *
      * @throws UnauthorizedException
      */
@@ -445,7 +433,7 @@ class ApiToken
             ]
         );
 
-        if (!$response->successful() || !property_exists($response->object(), 'access_token')) {
+        if (! $response->successful() || ! property_exists($response->object(), 'access_token')) {
             $error = $response->object();
             $reason = 'Unknown response in the sendTokenRequest method.';
 
@@ -472,7 +460,7 @@ class ApiToken
                 'Okta API OAuth token request error.',
                 '(Reason) ' . $reason,
                 '(Solution) Verify the client_id, registered public key, and that the requested scopes are granted',
-                'to the service app.'
+                'to the service app.',
             ]));
         }
 
