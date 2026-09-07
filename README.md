@@ -116,10 +116,10 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 
 ### Requirements
 
-| Requirement | Version                          |
-|-------------|----------------------------------|
-| PHP         | `^8.0`                           |
-| Laravel     | `^8.0`, `^9.0`, `^10.0`, `^11.0`, `^12.0`, `^13.0` |
+| Requirement | Version                     |
+|-------------|-----------------------------|
+| PHP         | `^8.2`                      |
+| Laravel     | `^11.0`, `^12.0`, `^13.0`   |
 
 OAuth 2.0 authentication requires no additional Composer packages; the JWT client assertion is signed with the `openssl` extension. This package does not integrate with any secrets manager, so there is no cloud SDK dependency. Fetching the signing key from a secrets manager, if you use one, is done in your own application code (see [Private Key Storage](#private-key-storage)).
 
