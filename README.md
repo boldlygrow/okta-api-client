@@ -1031,6 +1031,39 @@ An exception is thrown for any 4xx or 5xx responses. All responses are automatic
 | 422  | `BoldlyGrow\Okta\Exceptions\UnprocessableException`      |
 | 429  | `BoldlyGrow\Okta\Exceptions\RateLimitException`          |
 | 500  | `BoldlyGrow\Okta\Exceptions\ServerErrorException`        |
+| 503  | `BoldlyGrow\Okta\Exceptions\ServiceUnavailableException` |
+
+### Exception Messages
+
+Every exception message contains the HTTP method, status code, and full URL of the request, followed by the reason that the Okta API returned for the failure.
+
+```php
+GET 404 https://example.okta.com/api/v1/users/00u1ab2c3D4E5F6G7h8i (Reason) E0000007 Not found: Resource not found: 00u1ab2c3D4E5F6G7h8i (User)
+```
+
+When a request fails validation, the `errorSummary` only names the object that failed. The per-attribute reasons from `errorCauses` are appended so that the actionable part of the response is not lost.
+
+```php
+// {"errorCode":"E0000001","errorSummary":"Api validation failed: profile","errorCauses":[{"errorSummary":"firstName: The field cannot be left blank"},{"errorSummary":"email: Does not match required pattern"}]}
+POST 400 https://example.okta.com/api/v1/users (Reason) E0000001 Api validation failed: profile (Causes) firstName: The field cannot be left blank, email: Does not match required pattern
+```
+
+The OAuth 2.0 token endpoints return `error` and `error_description` instead of `errorCode` and `errorSummary`. Both formats are handled.
+
+```php
+// {"error":"invalid_client","error_description":"The client secret is invalid."}
+POST 400 https://example.okta.com/oauth2/v1/token (Reason) invalid_client The client secret is invalid.
+```
+
+If the response body uses none of these keys, the body itself is appended (truncated to 1000 characters) so that the reason is never discarded. If the response body is empty, the message contains only the method, status code, and URL.
+
+Percent encoded URLs are hard to read, so a decoded copy of the URL is appended when it differs from the URL that was requested. The encoded URL is always shown first and is the one to reproduce the request with, because decoding a `%2F` produces a URL that the API routes to a different endpoint.
+
+```php
+GET 400 https://example.okta.com/api/v1/users?filter=profile.email+eq+%22user%40example.com%22 (Reason) E0000031 Invalid filter (Decoded) https://example.okta.com/api/v1/users?filter=profile.email eq "user@example.com"
+```
+
+The same reason is stored as `errors.error_message` in the audit log entry for any unsuccessful request.
 
 ### Catching Exceptions
 

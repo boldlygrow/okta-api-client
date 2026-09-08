@@ -19,6 +19,7 @@ use BoldlyGrow\Okta\Exceptions\NotFoundException;
 use BoldlyGrow\Okta\Exceptions\PreconditionFailedException;
 use BoldlyGrow\Okta\Exceptions\RateLimitException;
 use BoldlyGrow\Okta\Exceptions\ServerErrorException;
+use BoldlyGrow\Okta\Exceptions\ServiceUnavailableException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
 use BoldlyGrow\Okta\Exceptions\UnprocessableException;
 use Carbon\Carbon;
@@ -730,6 +731,103 @@ class ApiClient
     }
 
     /**
+     * Parse the reason for an unsuccessful API response into a human readable string
+     *
+     * The Okta API and the OAuth 2.0 token endpoints use different keys for error messages, and the
+     * `errorSummary` for a validation failure is generic, so the reason for a failed request is
+     * discarded when only checking `errorCode` and `errorSummary`.
+     *
+     * - `errorCode` and `errorSummary` are returned by the Okta API.
+     *   Ex. `{"errorCode":"E0000007","errorSummary":"Not found: Resource not found: xyz (User)"}`
+     * - `errorCauses` contains the reason for each attribute that failed validation. The
+     *   `errorSummary` for these responses only names the object that failed (ex. `Api validation
+     *   failed: profile`), so the causes are the only actionable part of the response.
+     *   Ex. `{"errorCauses":[{"errorSummary":"firstName: The field cannot be left blank"}]}`
+     * - `error` and `error_description` are returned by the OAuth 2.0 token endpoints.
+     *   Ex. `{"error":"invalid_client","error_description":"The client secret is invalid."}`
+     *
+     * @see https://developer.okta.com/docs/reference/error-codes/
+     *
+     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
+     *
+     * @return ?string The reason for the error or null if the response body is empty
+     *                 Ex. `E0000007 Not found: Resource not found: xyz (User)`
+     *                 Ex. `E0000001 Api validation failed: profile (Causes) firstName: The field cannot be left blank`
+     */
+    private static function parseErrorMessage(object $response): ?string
+    {
+        $data = $response->data ?? null;
+
+        // An empty body (ex. a 204 No Content or a non-JSON body that could not be decoded) has no reason
+        if (blank($data) || ((is_object($data) || is_array($data)) && blank((array) $data))) {
+            return null;
+        }
+
+        $reason = [];
+
+        // `errorCode` is returned by the Okta API. `error` is returned by the OAuth 2.0 token endpoints.
+        foreach (['errorCode', 'error'] as $key) {
+            $value = data_get($data, $key);
+
+            if (! blank($value) && is_scalar($value)) {
+                $reason[] = trim((string) $value);
+                break;
+            }
+        }
+
+        // `errorSummary` is returned by the Okta API. `error_description` is returned by the OAuth
+        // 2.0 token endpoints.
+        foreach (['errorSummary', 'error_description'] as $key) {
+            $value = data_get($data, $key);
+
+            if (! blank($value)) {
+                $reason[] = self::flattenErrorMessage($value);
+                break;
+            }
+        }
+
+        $causes = data_get($data, 'errorCauses');
+
+        if (! blank($causes)) {
+            $reason[] = '(Causes) ' . self::flattenErrorMessage(
+                collect((array) $causes)->map(fn ($cause) => data_get($cause, 'errorSummary') ?? $cause)->all()
+            );
+        }
+
+        if (! empty($reason)) {
+            return implode(' ', $reason);
+        }
+
+        // The response body does not use a known error key (ex. an HTML error page from a proxy or
+        // an undocumented response), so the entire body is returned to avoid discarding the reason.
+        return Str::limit(is_scalar($data) ? (string) $data : (string) json_encode($data), 1000);
+    }
+
+    /**
+     * Flatten a nested error message into a single line string
+     *
+     * @param  mixed  $value  A string, array, or object from an error response body
+     *
+     * @return string Ex. `firstName: The field cannot be left blank, email: Does not match required pattern`
+     */
+    private static function flattenErrorMessage(mixed $value): string
+    {
+        if (is_scalar($value)) {
+            return trim((string) $value);
+        }
+
+        $messages = [];
+
+        foreach ((array) $value as $key => $item) {
+            $item = self::flattenErrorMessage($item);
+
+            $messages[] = is_string($key) ? $key . ': ' . $item : $item;
+        }
+
+        return implode(', ', $messages);
+    }
+
+    /**
      * Handle Okta API Exception
      *
      * @see https://developer.okta.com/docs/reference/error-codes/
@@ -834,8 +932,8 @@ class ApiClient
         if (isset($response->data->errorCode)) {
             $errors['error_code'] = $response->data->errorCode;
         }
-        if (isset($response->data->errorSummary)) {
-            $errors['error_message'] = $response->data->errorSummary;
+        if ($response->status->failed && ($error_message = self::parseErrorMessage($response)) !== null) {
+            $errors['error_message'] = $error_message;
         }
         if ($response->status->failed) {
             $errors['status_code'] = $response->status->code;
@@ -904,6 +1002,7 @@ class ApiClient
      * @throws PreconditionFailedException
      * @throws RateLimitException
      * @throws ServerErrorException
+     * @throws ServiceUnavailableException
      * @throws UnauthorizedException
      * @throws UnprocessableException
      */
@@ -913,13 +1012,21 @@ class ApiClient
         object $response
     ): void {
         if (config('okta-api-client.exceptions') == true) {
-            $message = implode(' ', [
+            $error_message = self::parseErrorMessage($response);
+
+            // The URL is kept exactly as it was requested so that it can be reproduced verbatim. A
+            // percent encoded path or query string is hard to read, so a decoded copy is appended
+            // when it differs. The decoded URL is for display only and is never used on its own,
+            // because decoding a `%2F` produces a URL that the API routes to a different endpoint.
+            $decoded_url = urldecode($url);
+
+            $message = implode(' ', array_filter([
                 Str::upper($method),
                 $response->status->code,
                 $url,
-                isset($response->data->errorCode) ? $response->data->errorCode : null,
-                isset($response->data->errorSummary) ? $response->data->errorSummary : null,
-            ]);
+                $error_message ? '(Reason) ' . $error_message : null,
+                $decoded_url !== $url ? '(Decoded) ' . $decoded_url : null,
+            ]));
 
             switch ($response->status->code) {
                 case 400:
@@ -953,7 +1060,9 @@ class ApiClient
                 case 429:
                     throw new RateLimitException($message);
                 case 500:
-                    throw new ServerErrorException(json_encode($response->data));
+                    throw new ServerErrorException($message);
+                case 503:
+                    throw new ServiceUnavailableException($message);
             }
         }
     }
