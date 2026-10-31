@@ -38,16 +38,16 @@ Say which version the changes call for and why. Ask before using a lower version
 ## 4. Write the entry
 
 - Use `## [X.Y.Z] - YYYY-MM-DD` with today's date when releasing, or `## [Unreleased]` when the user isn't releasing yet.
-- Follow the **Format** rules in `CONTRIBUTING.md`. Use the 5.0.0 entry as the example for a major release and the 5.1.0 entry for a minor release.
+- Follow the **Format** rules in `CONTRIBUTING.md`, and use the entries that it names as the examples for a major and a minor release.
 - Name the config keys, environment variables, classes, and methods that users would search for.
 
 ## 5. Update the links
 
-- Add the link reference at the bottom of `CHANGELOG.md`, newest first, in the same form as the existing ones: `[X.Y.Z]: <repository URL>/compare/<previous tag>...X.Y.Z`. Use the real tag names. Older tags have two components (ex. `4.2`).
-- If `README.md` links to a release section, update the anchor when the heading or date changes. The anchor includes the date (ex. `#500---2026-10-31`).
+- Add the link reference at the bottom of `CHANGELOG.md`, newest first, in the same form as the existing ones: `[X.Y.Z]: <repository URL>/compare/<previous tag>...X.Y.Z`. Use the real tag names from `git tag`, since some older tags have two components (ex. `4.2`).
+- If `README.md` links to a release section, update the anchor when the heading or date changes. The anchor includes the date (ex. `#500---2026-10-31` for `## [5.0.0] - 2026-10-31`).
 
 ## 6. Check and report
 
-- If `src/` changed, run `composer test`.
+- If `src/` or `composer.json` changed, run `composer prerelease`.
 - Don't commit, tag, or push unless the user asks. Tags are `X.Y.Z` with no `v` prefix.
 - Report the version and why, anything that you left out and why, and any inconsistencies that you found.

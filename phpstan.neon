@@ -19,7 +19,9 @@ parameters:
     reportIgnoresWithoutComments: true
 
     ignoreErrors:
-        # The published config file reads environment variables, which is the one place env() belongs.
+        # The published config file reads environment variables, which is the one place env() belongs. Not every
+        # package's config file calls env(), so an unmatched ignore is not reported.
         -
             identifier: larastan.noEnvCallsOutsideOfConfig
-            path: src/Config/okta-api-client.php
+            path: src/Config/*
+            reportUnmatched: false

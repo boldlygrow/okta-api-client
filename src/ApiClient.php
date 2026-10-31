@@ -22,7 +22,7 @@ use BoldlyGrow\Okta\Exceptions\ServerErrorException;
 use BoldlyGrow\Okta\Exceptions\ServiceUnavailableException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
 use BoldlyGrow\Okta\Exceptions\UnprocessableException;
-use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
@@ -228,20 +228,23 @@ class ApiClient
                 transaction: false
             );
 
-            // Use getPaginatedResults to loop through all paginated requests, then parse the combined records and
-            // convert to returnable object with expected format
+            // Use getPaginatedResults to loop through all paginated requests
+            $paginated_results = self::getPaginatedResults(
+                connection: $connection,
+                paginated_url: $paginated_url,
+                records: $response->data,
+                scope: $scope
+            );
+
+            // Parse the combined records and convert to returnable object with expected format
             $response = self::parseApiResponse((object) [
-                'paginated_results' => self::getPaginatedResults(
-                    connection: $connection,
-                    paginated_url: $paginated_url,
-                    records: $response->data,
-                    scope: $scope
-                ),
+                'paginated_results' => $paginated_results,
                 'headers' => $response->headers,
                 'status' => $response->status,
             ]);
 
-            $count_records = is_countable($response->data) ? count($response->data) : null;
+            // The records are counted before parseApiResponse() casts them to an object, which isn't countable
+            $count_records = count($paginated_results);
             $duration_ms_per_record = $count_records ? (int) ($event_ms->diffInMilliseconds() / $count_records) : null;
 
             AuditLog::create(
@@ -1103,17 +1106,19 @@ class ApiClient
      *
      * This method is called from other methods and create log entry and throw exception
      *
-     * @param  string       $method    The upstream method that invoked this method for traceability
-     *                                 Ex. __METHOD__
-     * @param  string       $url       The URL of the API call including the concatenated base URL and URI
-     * @param  ApiResponse  $response  The HTTP response formatted with $this->parseApiResponse()
-     * @param  Carbon       $event_ms  A process start timestamp used to calculate duration in ms for logs
+     * @param  string            $method    The upstream method that invoked this method for traceability
+     *                                      Ex. __METHOD__
+     * @param  string            $url       The URL of the API call including the concatenated base URL and URI
+     * @param  ApiResponse       $response  The HTTP response formatted with $this->parseApiResponse()
+     * @param  ?CarbonInterface  $event_ms  A process start timestamp used to calculate duration in ms for logs.
+     *                                      CarbonInterface accepts the CarbonImmutable that `now()` returns when the
+     *                                      application uses immutable dates.
      */
     private static function logResponse(
         string $method,
         string $url,
         object $response,
-        ?Carbon $event_ms = null
+        ?CarbonInterface $event_ms = null
     ): void {
         $log_types = [
             200 => ['event_type' => 'success', 'level' => 'debug'],

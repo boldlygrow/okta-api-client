@@ -1,12 +1,10 @@
 # Okta API Client
 
-[[_TOC_]]
-
 ## Overview
 
 The Okta API Client is an open source [Composer](https://getcomposer.org/) package for use in Laravel applications for connecting to Okta for provisioning and deprovisioning of users, groups, applications, and other related functionality.
 
-Please use at your own risk and create merge requests for any bugs that you encounter.
+Please use at your own risk and create pull requests for any bugs that you encounter.
 
 ### Problem Statement
 
@@ -103,7 +101,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 
 ### Maintainers
 
-| Name | GitLab Handle | Email |
+| Name | GitHub Handle | Email |
 |------|---------------|-------|
 | [Jeff Martin](https://www.linkedin.com/in/jeffersonmmartin/) | [@jeffersonmartin](https://github.com/jeffersonmartin) | `jeff [at] boldlygrow [dot] us` |
 
@@ -119,13 +117,13 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 | Requirement | Version                     |
 |-------------|-----------------------------|
 | PHP         | `^8.2` (up to 8.5 tested)   |
-| Laravel     | `^11.0`, `^12.0`, `^13.0`   |
+| Laravel     | `^12.0`, `^13.0`            |
 
 OAuth 2.0 authentication requires no additional Composer packages; the JWT client assertion is signed with the `openssl` extension. This package does not integrate with any secrets manager, so there is no cloud SDK dependency. If you use a secrets manager, your platform or your own application code loads the signing key from it (see [Private Key Storage](#private-key-storage)).
 
 ### Upgrade Guide
 
-See the [changelog](CHANGELOG.md) for release notes. If you are upgrading from `provisionesta/okta-api-client` (4.x), read the [5.0 release notes](CHANGELOG.md#500---2026-10-31) for the package rename, namespace change, and OAuth 2.0 authentication options.
+See the [changelog](CHANGELOG.md) for release notes. If you are upgrading from 5.x, read the [6.0 release notes](CHANGELOG.md#600---2026-10-31) for the supported Laravel versions. If you are upgrading from `provisionesta/okta-api-client` (4.x), read the [5.0 release notes](CHANGELOG.md#500---2026-10-31) for the package rename, namespace change, and OAuth 2.0 authentication options.
 
 ### Add Composer Package
 
@@ -2201,7 +2199,7 @@ The `event_type` key should be used for any categorization and log searches.
 [YYYY-MM-DD HH:II:SS] local.DEBUG: ApiClient::getPaginatedResults Success {"event_type":"okta.api.getPaginatedResults.success","method":"BoldlyGrow\\Okta\\ApiClient::getPaginatedResults","count_records":200,"event_ms":1060,"event_ms_per_record":5,"metadata":{"okta_request_id":"REDACTED","rate_limit_remaining":"289","url":"https://dev-12345678.okta.com/api/v1/users?after=00uREDACTED&limit=200&search=status+eq+%22ACTIVE%22+or+%28status+eq+%22DEPROVISIONED%22+and+statusChanged+ge+%222023-10-01T15%3A02%3A15.491037Z%22%29"}}
 [YYYY-MM-DD HH:II:SS] local.DEBUG: ApiClient::getPaginatedResults Success {"event_type":"okta.api.getPaginatedResults.success","method":"BoldlyGrow\\Okta\\ApiClient::getPaginatedResults","count_records":200,"event_ms":741,"event_ms_per_record":3,"metadata":{"okta_request_id":"REDACTED","rate_limit_remaining":"288","url":"https://dev-12345678.okta.com/api/v1/users?after=00uREDACTED&limit=200&search=status+eq+%22ACTIVE%22+or+%28status+eq+%22DEPROVISIONED%22+and+statusChanged+ge+%222023-10-01T15%3A02%3A15.491037Z%22%29"}}
 [YYYY-MM-DD HH:II:SS] local.DEBUG: ApiClient::getPaginatedResults Success {"event_type":"okta.api.getPaginatedResults.success","method":"BoldlyGrow\\Okta\\ApiClient::getPaginatedResults","count_records":90,"event_ms":407,"event_ms_per_record":4,"metadata":{"okta_request_id":"REDACTED","rate_limit_remaining":"287","url":"https://dev-12345678.okta.com/api/v1/users?after=00uREDACTED&limit=200&search=status+eq+%22ACTIVE%22+or+%28status+eq+%22DEPROVISIONED%22+and+statusChanged+ge+%222023-10-01T15%3A02%3A15.491037Z%22%29"}}
-[YYYY-MM-DD HH:II:SS] local.DEBUG: ApiClient::get Paginated Results Process Complete {"event_type":"okta.api.get.process.pagination.finished","method":"BoldlyGrow\\Okta\\ApiClient::get","duration_ms":14573,"metadata":{"okta_request_id":"REDACTED","uri":"users"}}
+[YYYY-MM-DD HH:II:SS] local.DEBUG: ApiClient::get Paginated Results Process Complete {"event_type":"okta.api.get.process.pagination.finished","method":"BoldlyGrow\\Okta\\ApiClient::get","count_records":2490,"duration_ms":14573,"duration_ms_per_record":5,"metadata":{"okta_request_id":"REDACTED","uri":"users"}}
 ```
 
 #### POST Request Log

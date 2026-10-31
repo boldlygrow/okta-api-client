@@ -8,7 +8,9 @@ use BoldlyGrow\Okta\Exceptions\ForbiddenException;
 use BoldlyGrow\Okta\Exceptions\NotFoundException;
 use BoldlyGrow\Okta\Exceptions\ServerErrorException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -195,6 +197,43 @@ it('logs a status code without its own event type with the event type for its ra
     'gone' => [410, 'okta.api.get.error.client-error', 'error'],
     'bad gateway' => [502, 'okta.api.get.critical.server-error', 'critical'],
 ]);
+
+it('accepts the CarbonImmutable start time of an application that uses immutable dates', function () {
+    Date::use(CarbonImmutable::class);
+    Http::fake([
+        'example.okta.com/api/v1/users/00u1' => Http::response(['id' => '00u1']),
+    ]);
+
+    try {
+        $response = ApiClient::get(uri: 'users/00u1', connection: ['url' => 'https://example.okta.com', 'token' => str_repeat('a', 42)]);
+    } finally {
+        // The date class is static, so it would otherwise apply to every later test.
+        Date::useDefault();
+    }
+
+    expect($response->status->code)->toBe(200);
+});
+
+it('logs the number of combined records when the paginated results are finished', function () {
+    Log::spy();
+    Http::fake([
+        'example.okta.com/api/v1/groups?*' => Http::sequence()
+            ->push([['id' => '00g1'], ['id' => '00g2']], 200, ['link' => [
+                '<https://example.okta.com/api/v1/groups?limit=2>; rel="self"',
+                '<https://example.okta.com/api/v1/groups?after=00g2&limit=2>; rel="next"',
+            ]])
+            ->push([['id' => '00g3']], 200, ['link' => [
+                '<https://example.okta.com/api/v1/groups?after=00g2&limit=2>; rel="self"',
+            ]]),
+    ]);
+
+    ApiClient::get(uri: 'groups', data: ['limit' => 2], connection: ['url' => 'https://example.okta.com', 'token' => str_repeat('a', 42)]);
+
+    Log::shouldHaveReceived('log')
+        ->withArgs(fn (string $log_level, string $message, array $context) => $context['event_type'] === 'okta.api.get.process.pagination.finished'
+            && $context['count_records'] === 3)
+        ->once();
+});
 
 it('reports a rejected SSWS token with SSWS guidance when the config uses OAuth', function () {
     config()->set('okta-api-client.client_id', '0oaTESTCLIENT');
