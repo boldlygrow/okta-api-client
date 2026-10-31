@@ -147,39 +147,149 @@ php artisan vendor:publish --tag=okta-api-client
 
 The client supports two authentication methods. It uses OAuth 2.0 automatically when an OAuth `client_id` is configured, and otherwise falls back to a legacy SSWS API token. New integrations should use OAuth 2.0.
 
-| Method | Credential | Best for |
-|--------|------------|----------|
-| OAuth 2.0 (`private_key_jwt`) | Client ID + private key | New integrations, least privilege, automatic rotation |
-| SSWS API token (legacy) | Static API token | Existing deployments, quick local testing |
+You don't need to call any authentication endpoints in your application. When you send a `GET`, `POST`, `PATCH`, `PUT`, or `DELETE` request to an Okta API endpoint with `ApiClient`, the client gets an access token (or uses your SSWS token), caches it, and sends it with the request for you.
 
-### Environment Variables
+| Setup | Credential | Best for |
+|-------|------------|----------|
+| OAuth 2.0 with a key you generate | Client ID + a private key that only you have | Production |
+| OAuth 2.0 with a key Okta generates | Client ID + a private key that Okta shows you once | Testing and proofs of concept |
+| SSWS API token (legacy) | A static token that acts as an Okta admin user | Existing deployments, quick local testing |
 
-Add the connection variables to your `.env` file. You can add these anywhere in the file on a new line.
+Both OAuth 2.0 setups work the same way at runtime. The only difference is where the private key was created. Client secrets aren't supported (see [Why Client Secrets Aren't Supported](#why-client-secrets-arent-supported)).
 
-For OAuth 2.0:
+The quick starts below cover the most common setups. For how each method works, other ways to generate a key, DPoP, token caching, and key rotation, see [Advanced Authentication](#advanced-authentication).
+
+### Quick Start: OAuth 2.0
+
+These steps create an Okta service app, generate a key pair with the package's Artisan command, and make your first request.
+
+#### Step 1: Create the Service App
+
+1. In the Okta Admin Console, go to **Applications > Applications** and click **Create App Integration**.
+2. Select **API Services** as the sign-in method and click **Next**.
+3. For the app name, enter the name of your Laravel application, such as the product name that your users and Okta admins know it by. Click **Save**.
+4. On the **General** tab, copy the **Client ID**. You will set this as `OKTA_API_CLIENT_ID`.
+
+#### Step 2: Generate a Key Pair
+
+The client signs each token request with an RSA private key that you keep, and Okta verifies the signature with the matching public key that you register. Generate the key pair with the package's Artisan command:
+
+```plain
+mkdir -p ~/.okta && chmod 700 ~/.okta
+php artisan okta-api-client:jwk --generate --kid=acme-portal-production-2026-10 --out="$HOME/.okta/okta-private-key.pem"
+```
+
+- `--kid` is the key ID. It's required, and it can be any string you choose. Okta shows it in the app's **Public Keys** table, much like the name of a personal access token, so use a value that identifies the application, environment, and date. You can't change it later (see [Key ID (kid)](#key-id-kid)).
+- `--out` is where the private key is written, with `0600` permissions. Keep it outside your repository, and never commit it.
+
+The command prints the public key as a JSON Web Key (JWK), which you paste into Okta in the next step. Your `n` value will differ:
+
+```json
+{
+    "kty": "RSA",
+    "n": "0vx7agoebGcQSuu…",
+    "e": "AQAB",
+    "use": "sig",
+    "alg": "RS256",
+    "kid": "acme-portal-production-2026-10"
+}
+```
+
+To let Okta generate the key pair instead, or to use OpenSSL, `ssh-keygen`, or PHP, see [Key Generation Options](#key-generation-options).
+
+#### Step 3: Register the Public Key in Okta
+
+1. In the service app, open the **General** tab. In the **Client Credentials** section, click **Edit**.
+2. In the **Public Keys** section, click **Add key**. Paste the entire JWK JSON, and click **Done**.
+3. For **Client authentication**, select **Public key / Private key**. Okta doesn't allow this until a key exists in the **Public Keys** section, which is why you add the key first.
+4. Click **Save**.
+5. Check that the **Public Keys** table shows your key with the `kid` that you chose. You will set this as `OKTA_API_KEY_ID`.
+
+On the same tab, check whether **Require Demonstrating Proof of Possession (DPoP) header in token requests** is selected. We recommend leaving it on. If it's on, you will set `OKTA_API_DPOP=true` (see [Demonstrating Proof of Possession](#demonstrating-proof-of-possession)).
+
+#### Step 4: Grant Scopes and an Admin Role
+
+The service app needs both. Scopes control which API endpoints the token is allowed to call. The permissions in the app's admin role authorize the actions on those endpoints, such as reading users or updating groups. A request with a granted scope but without a matching permission fails with a `403`.
+
+1. On the **Okta API Scopes** tab, click **Grant** for each scope that your integration needs, for example `okta.users.read` and `okta.groups.read`.
+2. On the **Admin roles** tab, assign an admin role whose permissions match the scopes that you granted:
+    - **Custom admin role (recommended):** Only the permissions that your scopes need, such as viewing users and groups, limited to a resource set.
+    - **Read-only Administrator:** An acceptable risk. It can view everything in your org, but can't change anything.
+    - **Super Administrator:** Don't assign it. A leaked key would have full control of your Okta org.
+
+See [Scopes and Admin Roles](#scopes-and-admin-roles) for how to create a custom admin role.
+
+#### Step 5: Set the Environment Variables
+
+Add the connection variables to your `.env` file:
 
 ```php
 OKTA_API_URL="https://mycompany.okta.com"
 OKTA_API_CLIENT_ID="0oaExampleClientId"
-OKTA_API_KEY_ID="the-registered-kid"
+OKTA_API_KEY_ID="acme-portal-production-2026-10"
+OKTA_API_PRIVATE_KEY_PATH="~/.okta/okta-private-key.pem"
 
-# Provide the signing key one of two ways (see Private Key Storage):
-# a path to a PEM file (local development or a mounted secret) ...
-OKTA_API_PRIVATE_KEY_PATH="/var/secrets/okta/private-key.pem"
-# ... or an inline PEM string (often resolved from a secrets manager in code).
-# OKTA_API_PRIVATE_KEY=
+# If the service app requires DPoP (see Step 3)
+OKTA_API_DPOP=true
 ```
 
-There is no scope environment variable. The scope is supplied per request as the `scope` argument (see [Scopes](#scopes)). For production, the private key is commonly resolved from a secrets manager and passed in the connection array rather than set in the environment (see [Private Key Storage](#private-key-storage)).
+A file path works well for local development. In production, store the private key in a secrets manager and pass it to the client at runtime (see [Private Key Storage](#private-key-storage)).
 
-For the legacy SSWS token:
+#### Step 6: Make a Request
+
+Pass the scope that each request needs as the `scope` argument. The client gets and caches the access token for you.
 
 ```php
-OKTA_API_URL="https://mycompany.okta.com"
-OKTA_API_TOKEN="S3cr3tK3yG03sH3r3"
+use BoldlyGrow\Okta\ApiClient;
+
+$users = ApiClient::get(uri: 'users', scope: 'okta.users.read')->data;
 ```
 
-If you have your connection secrets stored in your database or a secrets manager, you can override the `config/okta-api-client.php` configuration or provide a connection array on each request. See [connection arrays](#connection-arrays) to learn more.
+If the request fails, see [Troubleshooting Authentication](#troubleshooting-authentication).
+
+### Quick Start: SSWS API Token (Legacy)
+
+SSWS tokens are what this package used before it supported OAuth 2.0, and they're still supported. An SSWS token acts as the Okta admin user who created it, with all of that user's permissions (see [How SSWS Tokens Work](#how-ssws-tokens-work)). New integrations should use OAuth 2.0 instead. See the Okta documentation for [creating an API token](https://developer.okta.com/docs/guides/create-an-api-token/main/).
+
+1. Create a dedicated service account (bot) user for the integration, so that the token isn't tied to a person.
+2. Assign the user a least-privilege admin role, such as a custom admin role or `Read-only Administrator`. Don't assign `Super Administrator`.
+3. Sign in to the Okta Admin Console as the service account user. Go to **Security > API**, open the **Tokens** tab, and click **Create token**.
+4. Enter a name for the token, then copy its value. Okta shows the token only once.
+5. Add the connection variables to your `.env` file. The client adds the `SSWS ` prefix to the token, so don't include it.
+
+    ```php
+    OKTA_API_URL="https://mycompany.okta.com"
+    OKTA_API_TOKEN="00aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789AbCd"
+    ```
+
+6. Make requests without a `scope` argument. It's ignored for SSWS tokens.
+
+    ```php
+    use BoldlyGrow\Okta\ApiClient;
+
+    $users = ApiClient::get(uri: 'users')->data;
+    ```
+
+Okta revokes a token after 30 days without API calls. To move to OAuth 2.0 later, see [Moving from SSWS to OAuth 2.0](#moving-from-ssws-to-oauth-20).
+
+### Environment Variables
+
+The client reads these variables from your `.env` file through the `config/okta-api-client.php` configuration. If you store connection details in a database or secrets manager, you can pass a [connection array](#connection-arrays) on each request instead.
+
+| Variable | Method | Description |
+|----------|--------|-------------|
+| `OKTA_API_URL` | Both | Required. Your Okta org URL (see [URL](#url)). |
+| `OKTA_API_CLIENT_ID` | OAuth 2.0 | Required for OAuth 2.0. The service app's client ID. When it's set, the client uses OAuth 2.0 and ignores `OKTA_API_TOKEN`. |
+| `OKTA_API_KEY_ID` | OAuth 2.0 | Required for OAuth 2.0. The `kid` of the registered public key (see [Key ID (kid)](#key-id-kid)). |
+| `OKTA_API_PRIVATE_KEY_PATH` | OAuth 2.0 | The path to the private key file. A leading `~` is expanded to your home directory. |
+| `OKTA_API_PRIVATE_KEY` | OAuth 2.0 | The private key as an inline PEM string. Set this or `OKTA_API_PRIVATE_KEY_PATH`. This takes precedence if both are set. |
+| `OKTA_API_DPOP` | OAuth 2.0 | Set to `true` if the service app requires DPoP. Defaults to `false`. |
+| `OKTA_API_TOKEN_CACHE_MINUTES` | OAuth 2.0 | How long to cache each access token, from `1` to `59` minutes. Defaults to `59` (see [Token Caching](#token-caching)). |
+| `OKTA_API_TOKEN` | SSWS | Required for SSWS. The API token, without the `SSWS ` prefix. |
+| `OKTA_API_EXCEPTIONS` | Both | Whether to throw exceptions for `4xx` and `5xx` responses. Defaults to `true`. |
+| `OKTA_API_TEST_URI` | Both | The endpoint that `testConnection()` calls. Defaults to `org`, which needs the `okta.orgs.read` scope. |
+
+There is no scope variable. Each request passes its own `scope` argument (see [Scopes and Admin Roles](#scopes-and-admin-roles)).
 
 #### URL
 
@@ -195,193 +305,9 @@ OKTA_API_URL="https://mycompany.oktapreview.com"
 OKTA_API_URL="https://dev-12345678.okta.com"
 ```
 
-### OAuth 2.0 for Okta
-
-Okta requires the `private_key_jwt` client authentication method for access tokens that carry management API scopes. Client ID and client secret is **not** supported for reading users, groups, or apps. A client secret only works against a custom authorization server for custom scopes, which cannot read Okta resources. This client therefore authenticates with a Client ID and a private key, never a secret.
-
-#### Create the service app
-
-1. In the Okta Admin Console, go to **Applications > Create App Integration**.
-2. Select **API Services** as the sign-in method and click **Next**.
-3. Enter an app name (for example "Provisionr integration") and click **Save**.
-
-This creates the app in Client Credentials mode. The next sections register your signing key and grant the scopes and admin role. The scopes you grant are the hard ceiling on what any token can do; a narrower scope requested at runtime can never exceed the grant, so grant only what the integration needs.
-
-#### Generate and register a signing key
-
-OAuth for Okta uses an RSA public/private key pair instead of a shared secret. You keep the **private key** (this package signs a JWT with it on every token request), and you register the matching **public key** with the Okta app so Okta can verify that signature. RS256 is the default algorithm.
-
-There are two ways to get the key pair. Choose one.
-
-##### Option A: Let Okta generate the key pair (quickest, testing)
-
-1. In your API Services app, open the **General** tab. In the **Client Credentials** section, click **Edit**.
-2. For **Client authentication**, select **Public key / Private key**.
-3. In the **Public Keys** section, click **Add key**, then **Generate new key**.
-4. Okta shows the new key pair. Click **PEM** to view the private key in PEM format, then **Copy to clipboard**. This is the **only** time Okta shows the private key, so save it now. Okta does not store it.
-5. Click **Done**, then **Save**.
-6. In the **Public Keys** table, note the **Key ID (KID)** for the key you just added. You will set this as `OKTA_API_KEY_ID`.
-
-Okta recommends this option for testing only, because Okta generated (and briefly held) the private key. For production, generate the key yourself so the private key never leaves your control. Use Option B.
-
-##### Option B: Generate your own key pair (recommended for production)
-
-The package ships an Artisan command that generates an RSA key pair, writes the private key, and prints the public JWK ready to paste into Okta. This is the simplest path and needs no OpenSSL CLI or extra tooling:
-
-```plain
-php artisan okta:jwk --generate --out=okta-private-key.pem
-```
-
-This writes `okta-private-key.pem` (the **private key**, `0600`) and prints the public JWK. Keep the private key secret: store it in your secrets manager and pass it in at runtime, or point `OKTA_API_PRIVATE_KEY_PATH` at the file. Never commit it. The printed JWK looks like this (your `n` and `kid` will differ):
-
-```json
-{
-  "kty": "RSA",
-  "n": "0vx7agoebGcQSuu…",
-  "e": "AQAB",
-  "use": "sig",
-  "alg": "RS256",
-  "kid": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
-}
-```
-
-If you already have a public key PEM (for example one generated by your own key management process), convert it to a JWK instead of generating a new pair:
-
-```plain
-php artisan okta:jwk okta-public-key.pem
-```
-
-To generate the pair with OpenSSL directly and convert it, all three steps are equivalent:
-
-```plain
-openssl genrsa -out okta-private-key.pem 2048
-openssl rsa -in okta-private-key.pem -pubout -out okta-public-key.pem
-php artisan okta:jwk okta-public-key.pem
-```
-
-The conversion is also available programmatically as an action, so you can build the JWK inside your own provisioning or key-rotation code:
-
-```php
-use BoldlyGrow\Okta\PublicKeyJwk;
-
-$jwk = PublicKeyJwk::fromPemFile('okta-public-key.pem');
-// or
-$jwk = PublicKeyJwk::fromPem($publicKeyPemString);
-```
-
-Then register the public key:
-
-3. In your API Services app, open the **General** tab. In **Client Credentials**, click **Edit**, set **Client authentication** to **Public key / Private key**, then in **Public Keys** click **Add key**. Paste the entire JWK JSON, click **Done**, then **Save**.
-
-4. In the **Public Keys** table, copy the **Key ID (KID)** that Okta shows for the key. Set `OKTA_API_KEY_ID` to that value.
-
-#### Finish the app configuration
-
-Regardless of which option you chose:
-
-1. On the **Okta API Scopes** tab, click **Grant** for each scope your integration needs, for example `okta.users.read`, `okta.groups.read`, and `okta.apps.read`.
-2. On the **Admin roles** tab, assign a least-privilege role such as `Read-only Administrator`. Do not assign `Super Administrator`.
-3. On the **General** tab, copy the **Client ID** and set it as `OKTA_API_CLIENT_ID`.
-4. Store the private key per the [Private Key Storage](#private-key-storage) section, and set `OKTA_API_KEY_ID` to the Key ID from the previous step.
-
-The `kid` is included in the signed assertion header so Okta knows which registered public key to verify against. Setting `OKTA_API_KEY_ID` is required once the app has more than one registered key, and harmless to always set.
-
-#### Scopes
-
-The scope is provided per request as the `scope` argument. There is no scope default in config or the environment, so each OAuth call declares exactly the authority it needs.
-
-```php
-use BoldlyGrow\Okta\ApiClient;
-
-// Requests only okta.users.read for this call
-$users = ApiClient::get(uri: 'users', scope: 'okta.users.read')->data;
-
-// Requests only okta.groups.read for this call
-$groups = ApiClient::get(uri: 'groups', scope: 'okta.groups.read')->data;
-```
-
-Pass more than one scope as a space-delimited string when a single call needs multiple:
-
-```php
-$response = ApiClient::get(uri: 'users/' . $id . '/appLinks', scope: 'okta.users.read okta.apps.read')->data;
-```
-
-If the `scope` argument is omitted while OAuth credentials are configured, the client throws a `ScopeException`. The legacy SSWS token path ignores the `scope` argument entirely.
-
-Each token is cached for its full lifetime (about 59 minutes) per unique scope set, so requesting scopes per call mints a few more tokens per hour but does not shorten caching.
-
-#### Private Key Storage
-
-The private key is provided in one of two ways. This package does not integrate with any secrets manager; fetching the key from a vault or secrets manager is your application's responsibility, which keeps the package independent of your storage choice and free of cloud SDK dependencies.
-
-| Field | Value | Use |
-|-------|-------|-----|
-| `private_key` (`OKTA_API_PRIVATE_KEY`) | An inline PEM string | Production (resolved from your secrets manager at runtime), tests, CI |
-| `private_key_path` (`OKTA_API_PRIVATE_KEY_PATH`) | A path to a PEM file (leading `~` expanded) | Local development, or a secret mounted as a file |
-
-Provide one or the other. `private_key` takes precedence when both are set.
-
-##### Resolve the key from a secrets manager (connection array)
-
-Fetch the PEM from wherever you store it and pass it as `private_key` in a per-request connection array. This is the recommended pattern for multi-tenant applications, since each tenant can supply its own key. The example below uses Google Secret Manager, but any source works.
-
-```php
-use BoldlyGrow\Okta\ApiClient;
-use Google\Cloud\SecretManager\V1\Client\SecretManagerServiceClient;
-use Google\Cloud\SecretManager\V1\AccessSecretVersionRequest;
-
-// Fetch the PEM in your own code. Swap this for Vault, AWS Secrets Manager,
-// a mounted file, an HTTP call, etc. Cache it as appropriate for your app.
-$client = new SecretManagerServiceClient();
-$name = $client->secretVersionName('my-gcp-project', 'okta-mycompany-private-key', 'latest');
-$privateKey = $client->accessSecretVersion(
-    (new AccessSecretVersionRequest())->setName($name)
-)->getPayload()->getData();
-
-$connection = [
-    'url' => 'https://mycompany.okta.com',
-    'client_id' => '0oaExampleClientId',
-    'key_id' => 'the-registered-kid',
-    'private_key' => $privateKey,
-];
-
-$users = ApiClient::get(uri: 'users', scope: 'okta.users.read', connection: $connection)->data;
-```
-
-##### Resolve the key in the published config
-
-If you use a single service app for the whole application, publish the config and set the key there instead of passing a connection array on every call. Either point the environment variable at a mounted file:
-
-```php
-OKTA_API_PRIVATE_KEY_PATH="/var/secrets/okta/private-key.pem"
-```
-
-Or resolve it dynamically in the published `config/okta-api-client.php`, since a config file is plain PHP:
-
-```php
-// config/okta-api-client.php (after php artisan vendor:publish --tag=okta-api-client)
-'private_key' => app(\App\Support\OktaKeyResolver::class)->pem(),
-```
-
-Loading a secret in the config file runs on every request and during `config:cache`, so have your resolver cache the value (and be aware `config:cache` freezes whatever it returns at build time). Passing the key in the connection array is usually the cleaner choice when the value is dynamic or per-tenant.
-
-### Legacy SSWS API Token
-
-See the Okta documentation for [creating an API token](https://developer.okta.com/docs/guides/create-an-api-token/main/).
-
-An API token uses the permissions of the user it belongs to, so create a dedicated service account (bot) user for production use cases. Assign the `Read-only Administrator` role and add custom permissions as needed. For safety, do not grant the `Super Administrator` role. Tokens that are inactive for 30 days without API calls automatically expire.
-
-Set the `OKTA_API_TOKEN` in your `.env` file:
-
-```php
-OKTA_API_TOKEN="S3cr3tK3yG03sH3r3"
-```
-
-> **Internal Developer Note:** The API token is automatically prefixed with `SSWS ` when used by the API Client. It does not need to be included when defining the variable value.
-
 ### Connection Arrays
 
-The variables that you define in your `.env` file are used by default unless you set the connection argument with an array. A connection array contains the `url` and either an OAuth `client_id` (with key location fields) or a legacy `token`.
+The variables that you define in your `.env` file are used by default unless you set the connection argument with an array. A connection array contains the `url` and either an OAuth `client_id` (with the key ID and key location fields) or a legacy `token`.
 
 > **Security Warning:** Do not commit a hard coded API token or private key into your code base. This should only be used with dynamic variables that are stored in your database or secrets manager.
 
@@ -391,10 +317,11 @@ OAuth 2.0 connection array:
 $connection = [
     'url' => 'https://mycompany.okta.com',
     'client_id' => '0oaExampleClientId',
-    'key_id' => 'the-registered-kid',
-    'private_key' => $privateKeyPem, // an inline PEM string (see Private Key Storage)
+    'key_id' => 'acme-portal-production-2026-10', // required
+    'private_key' => $private_key_pem, // an inline PEM string (see Private Key Storage)
     // or, instead of private_key:
     // 'private_key_path' => '/var/secrets/okta/private-key.pem',
+    'dpop' => true, // if the service app requires DPoP (see Demonstrating Proof of Possession)
 ];
 ```
 
@@ -405,7 +332,7 @@ Legacy SSWS connection array:
 ```php
 $connection = [
     'url' => 'https://mycompany.okta.com',
-    'token' => 'S3cr3tK3yG03sH3r3',
+    'token' => '00aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789AbCd',
 ];
 ```
 
@@ -438,7 +365,7 @@ class MyClass
 
 #### Least Privilege
 
-Grant the service app only the scopes it needs and assign a read-only admin role. The app's granted scopes are the real least-privilege boundary; requesting narrower scopes per call is defense in depth on top of that grant, not a replacement for it.
+Grant the service app only the scopes that it needs, and assign an admin role whose permissions match those scopes, preferably a custom admin role (see [Scopes and Admin Roles](#scopes-and-admin-roles)). The app's granted scopes and admin role are the real least-privilege boundary. Requesting narrower scopes per call is defense in depth on top of that grant, not a replacement for it.
 
 #### No Shared Credentials
 
@@ -452,7 +379,23 @@ In production, store the private key in a secrets manager or vault and resolve i
 
 #### Rotation
 
-OAuth service apps support multiple registered public keys, so you can add a new key, start signing with its `kid`, and retire the old key with no downtime. To roll a key, register the new public key in Okta, then update the private key you supply (the connection array value, the file at `private_key_path`, or `OKTA_API_PRIVATE_KEY`) and set `OKTA_API_KEY_ID` to the new `kid`. Because the token cache key includes the `kid` and a fingerprint of the inline key, changing either takes effect immediately; a rotated file at the same `private_key_path` is picked up within the token cache lifetime (at most about 59 minutes).
+Rotate private keys and API tokens on a schedule, and whenever someone who had access to them leaves. Service apps support more than one public key, so you can rotate a key without downtime (see [Key Rotation](#key-rotation)).
+
+### Troubleshooting Authentication
+
+| Error message | Likely cause | Fix |
+|---------------|--------------|-----|
+| `The key_id (OKTA_API_KEY_ID) is required.` | `OKTA_API_KEY_ID` isn't set, or the connection array has no `key_id`. | Set it to the `kid` in the app's **Public Keys** table (see [Key ID (kid)](#key-id-kid)). |
+| `The resolved private key is empty or is not a valid PEM-formatted private key.` | The key is in the OpenSSH format, has a passphrase, is a public key, or lost its line breaks in an inline value. | Check the key's first line against [Private Key Format](#private-key-format). |
+| `The private key file was not found or is not readable at (...)` | The path is wrong, or the user that runs PHP can't read the file. | Check the path in the message. A `~` is only expanded at the start of the path. |
+| `The token_cache_minutes (OKTA_API_TOKEN_CACHE_MINUTES) value must be a whole number between 1 and 59` | `OKTA_API_TOKEN_CACHE_MINUTES` is `0`, more than `59`, or not a number. | Set it to a whole number from `1` to `59`, or remove it to use the default. |
+| `Okta API OAuth token request error.` with `The Okta service app requires DPoP.` | The app requires DPoP, but the client doesn't have it enabled. | Set `OKTA_API_DPOP=true`, or `'dpop' => true` in the connection array. |
+| `Okta API OAuth token request error.` with another reason | The client ID is wrong, the public key isn't registered, the `kid` doesn't match, client authentication isn't set to **Public key / Private key**, or a requested scope isn't granted. | Compare `OKTA_API_KEY_ID` with the **Public Keys** table, and check that each scope you request is granted on the **Okta API Scopes** tab. |
+| `An OAuth scope is required but was not provided.` | OAuth is configured, but the request has no `scope` argument. | Add the `scope` argument to the request (see [Scopes and Admin Roles](#scopes-and-admin-roles)). |
+| `The OAuth access token was rejected.` | Okta returned a `401` for the access token, for example because it was revoked or the app's grants changed. | The client has already removed the token from the cache, so the next request mints a new one. If the error persists, check the app's granted scopes. |
+| `403` with `E0000006 You do not have permission to perform the requested action` | The scope is granted, but the app's admin role doesn't include a permission for the action. | Add the permission to the app's admin role (see [Scopes and Admin Roles](#scopes-and-admin-roles)). |
+| `invalid_dpop_proof 'iat' claim in the DPoP proof JWT is invalid.` | The server's clock is out of sync. | Sync the system clock with NTP. |
+| `The SSWS API token was rejected.` | The token expired after 30 days of inactivity, was revoked, or belongs to a deactivated user. | Create a new token (see [Quick Start: SSWS API Token (Legacy)](#quick-start-ssws-api-token-legacy)). |
 
 ## API Requests
 
@@ -1551,6 +1494,456 @@ $users = collect(ApiClient::get('users')->data)
 ### Additional Reading
 
 See the [Laravel Collections](https://laravel.com/docs/10.x/collections) documentation for additional usage.
+
+## Advanced Authentication
+
+This section explains how authentication works behind the scenes, and covers other ways to generate and store keys. You don't need it to get started (see [Authentication](#authentication)), but it helps when you review the security model, automate key management, or troubleshoot an error.
+
+### How SSWS Tokens Work
+
+An SSWS token is a static secret that an Okta admin creates in the Admin Console. The client sends it unchanged on every request:
+
+```plain
+Authorization: SSWS {token}
+```
+
+- **Permissions:** The token acts as the admin user who created it, with all of that user's admin roles. There are no scopes, so the `scope` argument is ignored.
+- **Lifetime:** The token has no fixed expiry. Okta revokes it after 30 days without API calls, or when the user who created it is deactivated.
+- **Exposure:** Anyone who has the token can use it until it is revoked. Nothing else is needed to prove who is calling.
+- **Validation:** Before sending a request, the client checks that the token is 42 characters long, using only letters, numbers, `-`, and `_`. Okta API tokens are 42 characters.
+
+### How OAuth 2.0 Works
+
+The Okta service app has a public key registered in Okta, and the client has the matching private key. Instead of sending a secret, the client signs a short-lived JWT (the client assertion) with the private key. The private key never leaves your application.
+
+```mermaid
+sequenceDiagram
+    participant App as Your application
+    participant Client as ApiClient
+    participant Token as Okta token endpoint
+    participant API as Okta API
+
+    App->>Client: API request with a scope
+    alt No cached token for this connection and scope
+        Client->>Client: Sign a client assertion with the private key
+        Client->>Token: POST client_credentials grant with the client assertion
+        Token-->>Client: Access token that expires in 60 minutes
+        Client->>Client: Encrypt and cache the token
+    end
+    Client->>API: Request with the access token
+    API-->>Client: Response
+    Client-->>App: Parsed response
+```
+
+The first time a scope is requested, the client gets an access token:
+
+1. **Resolve the private key.** The client reads `private_key` (an inline PEM string) or the file at `private_key_path`, then checks that PHP's OpenSSL extension can parse it (see [Private Key Format](#private-key-format)).
+2. **Sign a client assertion.** The client builds a JWT and signs it with the private key using RS256:
+
+    | Part | Field | Value |
+    |------|-------|-------|
+    | Header | `alg` | `RS256` |
+    | Header | `kid` | `OKTA_API_KEY_ID`. Required, since Okta rejects an assertion without it (see [Key ID (kid)](#key-id-kid)). |
+    | Claims | `iss` and `sub` | The service app's client ID |
+    | Claims | `aud` | `https://{yourOktaDomain}/oauth2/v1/token` |
+    | Claims | `iat` and `exp` | The current time, and 5 minutes later |
+    | Claims | `jti` | A random UUID, so that the assertion can't be replayed |
+
+3. **Request a token.** The client posts the assertion to the org authorization server's `/oauth2/v1/token` endpoint, with `grant_type=client_credentials` and the scope from the request.
+4. **Okta verifies the assertion.** Okta finds the registered public key that matches the `kid`, then verifies the signature and claims and checks that each requested scope is granted to the app. If everything is valid, it returns an access token that expires in 60 minutes.
+5. **Cache the token.** The token is encrypted and cached for 59 minutes by default (see [Token Caching](#token-caching)).
+6. **Call the API.** The token is sent as `Authorization: Bearer {token}` on this request and on later requests for the same scope. Okta then checks that the app's admin role permits the action (see [Scopes and Admin Roles](#scopes-and-admin-roles)).
+
+When DPoP is enabled, the token request and each API request also carry a signed DPoP proof, and the token is sent as `Authorization: DPoP {token}` (see [Demonstrating Proof of Possession](#demonstrating-proof-of-possession)).
+
+### Key ID (kid)
+
+Every public key that is registered on a service app has a key ID (`kid`). The client sends it in the header of each client assertion so that Okta knows which public key to verify the signature with. It's required. Okta rejects a client assertion without a `kid`, so the client throws a `ConfigurationException` before requesting a token if `OKTA_API_KEY_ID` isn't set.
+
+The `kid` is set when the key is created, and it can be any string you choose. Okta shows it in the app's **Public Keys** table, much like the name of a personal access token, so choose a value that describes what the key is for. For example, `acme-portal-production-2026-10` identifies the application, environment, and month that the key was created. Use a different `kid` for each key on an app.
+
+You can't change a key's `kid` after it's registered. To use a different one, register a new key and retire the old one (see [Key Rotation](#key-rotation)).
+
+Where the `kid` comes from depends on how you create the key:
+
+| Key generation method | Where the `kid` comes from |
+|-----------------------|----------------------------|
+| Okta generates the key | Okta assigns it. |
+| Artisan command | The `--kid` option. If you leave it out, the command uses the key's RFC 7638 thumbprint, a 43-character hash. |
+| OpenSSL or `ssh-keygen` | A PEM file doesn't have a `kid`. You add one when you convert the public key to a JWK with `php artisan okta-api-client:jwk okta-public-key.pem --kid=...`. |
+| PHP | The `kid` argument of `PublicKeyJwk::fromPem()` or `PublicKeyJwk::fromPemFile()`, or the thumbprint if you leave it out. |
+
+In every case, set `OKTA_API_KEY_ID` to the `kid` that's shown in the **Public Keys** table.
+
+### Key Generation Options
+
+You need two things: the private key in PEM format, which you keep, and the public key as a JSON Web Key (JWK), which you register in Okta. Any of the following methods produces a key that the client accepts. After you generate a key pair yourself, register it as described in [Step 3](#step-3-register-the-public-key-in-okta) of the quick start.
+
+Use a new key pair for each Okta integration. Don't reuse a key that you use for SSH or another service.
+
+#### Okta-Generated vs Self-Generated Keys
+
+Both options produce an RSA key pair, and the client uses the private key in exactly the same way. The difference is who creates the private key and who has seen it.
+
+| | Okta-generated | Self-generated |
+|-|----------------|----------------|
+| Who creates the key pair | Okta, in the Admin Console | You, with the Artisan command, OpenSSL, `ssh-keygen`, or PHP |
+| Who has seen the private key | Okta and your browser. Okta shows it once and does not store it. | Only you |
+| Public key registration | Okta adds the public key to the app | You paste the public key into Okta as a JWK |
+| Key ID (`kid`) | Assigned by Okta | Chosen by you |
+| Recommended for | Testing | Production |
+
+You can switch between the two without changing code. Add the new key to the app, update the private key and `OKTA_API_KEY_ID`, and then retire the old key (see [Key Rotation](#key-rotation)).
+
+#### Let Okta Generate the Key Pair
+
+Okta recommends this option for testing only, because Okta generated (and briefly held) the private key. For production, generate the key yourself so that the private key never leaves your control.
+
+1. In the service app, open the **General** tab. In the **Client Credentials** section, click **Edit**.
+2. In the **Public Keys** section, click **Add key**, then **Generate new key**.
+3. Okta shows the new key pair. Click **PEM** to view the private key in PEM format, then **Copy to clipboard**. The client only reads PEM, so don't copy the JWK version. This is the **only** time Okta shows the private key, so save it now (see below). Okta does not store it.
+4. Click **Done**.
+5. For **Client authentication**, select **Public key / Private key**, then click **Save**. Okta doesn't allow this until a key exists in the **Public Keys** section.
+6. In the **Public Keys** table, copy the **Key ID (KID)** that Okta assigned. Set `OKTA_API_KEY_ID` to that value.
+
+To save the copied key to a file on macOS, paste it from the clipboard into a file that only you can read:
+
+```plain
+mkdir -p ~/.okta && chmod 700 ~/.okta
+pbpaste > ~/.okta/okta-private-key.pem
+chmod 600 ~/.okta/okta-private-key.pem
+```
+
+On Linux, paste the key into `~/.okta/okta-private-key.pem` with a text editor, and then run the same `chmod` commands. The first line of the file should start with `-----BEGIN` and end with `PRIVATE KEY-----`.
+
+Then continue with [Step 4](#step-4-grant-scopes-and-an-admin-role) of the quick start.
+
+#### Using the Artisan Command
+
+The `okta-api-client:jwk` command generates a key pair, or converts an existing public key to a JWK. It only needs PHP's `openssl` extension.
+
+| Option | Description |
+|--------|-------------|
+| `--generate` | Generate a new key pair instead of converting a public key file. |
+| `--out` | Where to write the private key when using `--generate`. Defaults to `okta-private-key.pem` in the current directory. |
+| `--kid` | The key ID. Defaults to the key's RFC 7638 thumbprint. |
+| `--bits` | The key size when using `--generate`. Defaults to `2048`, which is also the minimum. |
+| `path` | The public key PEM file to convert, when not using `--generate`. |
+
+```plain
+# Generate a new key pair
+php artisan okta-api-client:jwk --generate --kid=acme-portal-production-2026-10 --out="$HOME/.okta/okta-private-key.pem"
+
+# Convert an existing public key to a JWK
+php artisan okta-api-client:jwk okta-public-key.pem --kid=acme-portal-production-2026-10
+```
+
+The private key is written with `0600` permissions. Your shell doesn't expand `~` after `--out=`, so use `$HOME` or a full path. Never commit the private key.
+
+#### Using OpenSSL on macOS or Linux
+
+```plain
+# Create a directory that only you can read
+mkdir -p ~/.okta && chmod 700 ~/.okta
+
+# Generate a 2048-bit RSA private key
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out ~/.okta/okta-private-key.pem
+chmod 600 ~/.okta/okta-private-key.pem
+
+# Extract the public key
+openssl pkey -in ~/.okta/okta-private-key.pem -pubout -out ~/.okta/okta-public-key.pem
+
+# Convert the public key to a JWK to paste into Okta
+php artisan okta-api-client:jwk ~/.okta/okta-public-key.pem --kid=acme-portal-production-2026-10
+```
+
+These commands work with OpenSSL 3 (most Linux distributions and Homebrew) and with the LibreSSL that ships with macOS at `/usr/bin/openssl`. Run `openssl version` to check which one you have. The private key's first line is `-----BEGIN PRIVATE KEY-----`.
+
+Older guides use `openssl genrsa -out okta-private-key.pem 2048`. This also works, but the output format depends on your OpenSSL version: OpenSSL 3 writes `BEGIN PRIVATE KEY`, and LibreSSL writes `BEGIN RSA PRIVATE KEY`. The client accepts both.
+
+The public key isn't secret. After you register it in Okta, you can delete `okta-public-key.pem` or keep it for reference.
+
+#### Using ssh-keygen
+
+If you prefer `ssh-keygen`, you must pass `-m PEM`. Without it, `ssh-keygen` writes the OpenSSH format (`-----BEGIN OPENSSH PRIVATE KEY-----`), which PHP's OpenSSL extension can't read.
+
+```plain
+mkdir -p ~/.okta && chmod 700 ~/.okta
+
+# -m PEM writes a key that PHP can read, and -N "" leaves it without a passphrase
+ssh-keygen -t rsa -b 2048 -m PEM -N "" -C "" -f ~/.okta/okta-private-key.pem
+
+# Extract the public key in PEM format, then convert it to a JWK
+openssl pkey -in ~/.okta/okta-private-key.pem -pubout -out ~/.okta/okta-public-key.pem
+php artisan okta-api-client:jwk ~/.okta/okta-public-key.pem --kid=acme-portal-production-2026-10
+```
+
+The private key's first line is `-----BEGIN RSA PRIVATE KEY-----`. `ssh-keygen` also writes `okta-private-key.pem.pub`, which is an OpenSSH public key that the JWK command can't read. Use the `openssl pkey` command above instead, and delete the `.pub` file.
+
+If you already generated an Okta key in the OpenSSH format, convert a copy of it. The key itself doesn't change, so a public key that you already registered in Okta still matches.
+
+```plain
+cp ~/.okta/okta-key ~/.okta/okta-private-key.pem
+ssh-keygen -p -m PKCS8 -P "" -N "" -f ~/.okta/okta-private-key.pem
+```
+
+The copy's first line changes to `-----BEGIN PRIVATE KEY-----`. If the key has a passphrase, leave out `-P ""` and enter the passphrase when prompted. The `-N ""` option removes it from the copy, since the client doesn't support passphrase-protected keys.
+
+#### Using PHP in Your Laravel Application
+
+You can generate the key pair in PHP, for example in a key rotation job or a provisioning command. This uses the same `openssl` functions as the Artisan command, so no additional packages are needed:
+
+```php
+use BoldlyGrow\Okta\PublicKeyJwk;
+
+$key = openssl_pkey_new([
+    'private_key_type' => OPENSSL_KEYTYPE_RSA,
+    'private_key_bits' => 2048,
+]);
+
+// A "-----BEGIN PRIVATE KEY-----" string to store in your secrets manager
+openssl_pkey_export($key, $private_key_pem);
+
+// The JWK to register in the Okta service app
+$public_key_pem = openssl_pkey_get_details($key)['key'];
+$jwk = PublicKeyJwk::fromPem($public_key_pem, kid: 'acme-portal-production-2026-10');
+
+echo json_encode($jwk, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+```
+
+`openssl_pkey_new()` returns `false` if the `openssl` extension can't generate a key, so check the result in production code.
+
+Store `$private_key_pem` in your secrets manager and pass it as `private_key` in the connection array (see [Private Key Storage](#private-key-storage)). For local development, you can write it to a file outside your repository instead:
+
+```php
+use Illuminate\Support\Facades\File;
+
+$path = getenv('HOME') . '/.okta/okta-private-key.pem';
+
+File::ensureDirectoryExists(dirname($path), 0700);
+File::put($path, $private_key_pem);
+File::chmod($path, 0600);
+```
+
+`PublicKeyJwk::fromPemFile()` also converts a public key file, if your key management process already writes one:
+
+```php
+$jwk = PublicKeyJwk::fromPemFile('okta-public-key.pem', kid: 'acme-portal-production-2026-10');
+```
+
+### Private Key Format
+
+The client reads the private key with PHP's `openssl_pkey_get_private()`, so the key must be an RSA private key in PEM format without a passphrase. The file name and extension don't matter. You can check a key's format by looking at its first line:
+
+| First line | Accepted | Created by |
+|------------|----------|------------|
+| `-----BEGIN PRIVATE KEY-----` | Yes | The Artisan command, `openssl genpkey`, `openssl genrsa` with OpenSSL 3, and `openssl_pkey_export()` |
+| `-----BEGIN RSA PRIVATE KEY-----` | Yes | `ssh-keygen -m PEM`, and `openssl genrsa` with LibreSSL |
+| `-----BEGIN OPENSSH PRIVATE KEY-----` | No | `ssh-keygen` without `-m PEM`. Convert it (see [Using ssh-keygen](#using-ssh-keygen)). |
+| `-----BEGIN ENCRYPTED PRIVATE KEY-----` | No | A key with a passphrase. Remove the passphrase (see below). |
+| `-----BEGIN PUBLIC KEY-----` | No | This is the public key. Register it in Okta as a JWK, and give the client the private key. |
+
+A `BEGIN RSA PRIVATE KEY` key that has a `Proc-Type: 4,ENCRYPTED` line also has a passphrase and isn't accepted. To write a copy of a passphrase-protected key without the passphrase, run the following command and enter the passphrase when prompted:
+
+```plain
+openssl pkey -in encrypted-key.pem -out ~/.okta/okta-private-key.pem
+chmod 600 ~/.okta/okta-private-key.pem
+```
+
+To set a key inline with `OKTA_API_PRIVATE_KEY` in a `.env` file, you can put it on a single line, replacing each line break with a literal `\n`. The client converts each `\n` back to a line break. On macOS, this command copies a key file to the clipboard in that format:
+
+```plain
+php -r 'echo str_replace("\n", "\\n", trim(file_get_contents($argv[1])));' ~/.okta/okta-private-key.pem | pbcopy
+```
+
+```php
+OKTA_API_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC...\n-----END PRIVATE KEY-----"
+```
+
+### Private Key Storage
+
+The private key is provided in one of two ways. This package does not integrate with any secrets manager; fetching the key from a vault or secrets manager is your application's responsibility, which keeps the package independent of your storage choice and free of cloud SDK dependencies.
+
+| Field | Value | Use |
+|-------|-------|-----|
+| `private_key` (`OKTA_API_PRIVATE_KEY`) | An inline PEM string | Production (resolved from your secrets manager at runtime), tests, CI |
+| `private_key_path` (`OKTA_API_PRIVATE_KEY_PATH`) | A path to a PEM file (leading `~` expanded) | Local development, or a secret mounted as a file |
+
+Provide one or the other. `private_key` takes precedence when both are set.
+
+#### Resolve the Key From a Secrets Manager (Connection Array)
+
+Fetch the PEM from wherever you store it and pass it as `private_key` in a per-request connection array. This is the recommended pattern for multi-tenant applications, since each tenant can supply its own key. The example below uses Google Secret Manager, but any source works.
+
+```php
+use BoldlyGrow\Okta\ApiClient;
+use Google\Cloud\SecretManager\V1\Client\SecretManagerServiceClient;
+use Google\Cloud\SecretManager\V1\AccessSecretVersionRequest;
+
+// Fetch the PEM in your own code. Swap this for Vault, AWS Secrets Manager,
+// a mounted file, an HTTP call, etc. Cache it as appropriate for your app.
+$client = new SecretManagerServiceClient();
+$name = $client->secretVersionName('my-gcp-project', 'okta-mycompany-private-key', 'latest');
+$private_key_pem = $client->accessSecretVersion(
+    (new AccessSecretVersionRequest())->setName($name)
+)->getPayload()->getData();
+
+$connection = [
+    'url' => 'https://mycompany.okta.com',
+    'client_id' => '0oaExampleClientId',
+    'key_id' => 'acme-portal-production-2026-10',
+    'private_key' => $private_key_pem,
+];
+
+$users = ApiClient::get(uri: 'users', scope: 'okta.users.read', connection: $connection)->data;
+```
+
+#### Resolve the Key in the Published Config
+
+If you use a single service app for the whole application, publish the config and set the key there instead of passing a connection array on every call. Either point the environment variable at a mounted file:
+
+```php
+OKTA_API_PRIVATE_KEY_PATH="/var/secrets/okta/private-key.pem"
+```
+
+Or resolve it dynamically in the published `config/okta-api-client.php`, since a config file is plain PHP:
+
+```php
+// config/okta-api-client.php (after php artisan vendor:publish --tag=okta-api-client)
+'private_key' => app(\App\Support\OktaKeyResolver::class)->pem(),
+```
+
+Loading a secret in the config file runs on every request and during `config:cache`, so have your resolver cache the value (and be aware `config:cache` freezes whatever it returns at build time). Passing the key in the connection array is usually the cleaner choice when the value is dynamic or per-tenant.
+
+### Scopes and Admin Roles
+
+Two settings on the service app control what the client can do, and every request needs both:
+
+- **Scopes** decide which API endpoints an access token is allowed to call. For example, `okta.users.read` allows `GET /api/v1/users`. You grant scopes on the app's **Okta API Scopes** tab, and each request asks for the scopes that it needs.
+- **Admin role permissions** authorize the action itself, on the resources that the role covers. You assign a role on the app's **Admin roles** tab.
+
+If a request has a granted scope but the admin role doesn't include a matching permission, Okta returns a `403`. Keep the two in step: if you grant `okta.users.read`, give the role permission to view users, and nothing broader.
+
+#### Choosing an Admin Role
+
+| Role | Risk | Use |
+|------|------|-----|
+| Custom admin role | Lowest. It only has the permissions and resources that you choose. | Recommended |
+| Read-only Administrator | Acceptable. It can view everything in your org, but can't change anything. | When a custom role isn't practical for a read-only integration |
+| Super Administrator | High. A leaked key would have full control of your Okta org. | Don't assign it |
+
+To create a custom admin role:
+
+1. In the Okta Admin Console, go to **Security > Administrators**.
+2. On the **Roles** tab, create a role with only the permissions that match the scopes that you granted.
+3. On the **Resources** tab, create a resource set with the users, groups, or apps that the integration works with.
+4. In the service app, open the **Admin roles** tab, and assign the role with the resource set.
+
+#### Requesting Scopes
+
+The scope is provided per request as the `scope` argument. There is no scope default in config or the environment, so each OAuth call declares exactly the authority it needs. A requested scope can never exceed what's granted to the app.
+
+```php
+use BoldlyGrow\Okta\ApiClient;
+
+// Requests only okta.users.read for this call
+$users = ApiClient::get(uri: 'users', scope: 'okta.users.read')->data;
+
+// Requests only okta.groups.read for this call
+$groups = ApiClient::get(uri: 'groups', scope: 'okta.groups.read')->data;
+```
+
+Pass more than one scope as a space-delimited string when a single call needs multiple:
+
+```php
+$response = ApiClient::get(uri: 'users/' . $id . '/appLinks', scope: 'okta.users.read okta.apps.read')->data;
+```
+
+If the `scope` argument is omitted while OAuth credentials are configured, the client throws a `ScopeException`. The legacy SSWS token path ignores the `scope` argument entirely.
+
+Each token is cached for its full lifetime per unique scope set, so requesting scopes per call mints a few more tokens per hour but does not shorten caching (see [Token Caching](#token-caching)).
+
+### Demonstrating Proof of Possession
+
+On the **General** tab of the service app, the **Require Demonstrating Proof of Possession (DPoP) header in token requests** setting binds each access token to a key pair held by the client ([RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449)). A leaked DPoP-bound access token cannot be replayed, because every request must also carry a single-use proof signed by the same key for that exact HTTP method and URL. We recommend leaving it enabled.
+
+When the setting is enabled, set `OKTA_API_DPOP=true` (or `'dpop' => true` in a [connection array](#connection-arrays)). If it is not set, the token request fails with an `UnauthorizedException` that explains the setting is required.
+
+```php
+OKTA_API_DPOP=true
+```
+
+No additional key management is needed. When DPoP is enabled, the client handles the protocol for you:
+
+- **DPoP key:** Each time the client mints an access token, it generates a separate 2048-bit RSA key pair for DPoP. This key isn't your signing key, and it isn't registered in Okta. It's encrypted and cached with the access token for the token's lifetime.
+- **Token request:** The token request carries a DPoP proof signed with the DPoP key. Okta replies with a `use_dpop_nonce` challenge, and the client retries with the server-provided nonce and a newly signed client assertion. The access token that Okta returns only works with proofs signed by that DPoP key.
+- **API requests:** Each API request is sent with `Authorization: DPoP {token}` instead of `Bearer`, and a new `DPoP` proof header. The proof contains the HTTP method (`htm`), the URL without its query string and with its path percent-decoded (`htu`), a hash of the access token (`ath`), and a unique `jti`. If the API sends a `use_dpop_nonce` challenge, the request is retried once with the nonce.
+
+If Okta rejects a DPoP proof, the exception message includes the reason that Okta returns in the `WWW-Authenticate` response header, for example `invalid_dpop_proof 'htu' claim in the DPoP proof JWT is invalid.`
+
+### Token Caching
+
+The client caches each access token so that it doesn't request a new token for every API call. Tokens are stored with the Laravel `Cache` facade in your application's default cache store.
+
+- **Encryption:** The client never writes a plain access token to the cache. Before caching, it encrypts the access token, its token type, and the DPoP private key with Laravel's `encrypt()` helper, which uses your `APP_KEY` and the cipher in `config/app.php` (`AES-256-CBC` by default). Anyone who can read your cache store, such as Redis, the `cache` database table, or the cache files, sees only the encrypted value, which is useless without your `APP_KEY`.
+- **Cache key:** `okta-api-token-` followed by an MD5 hash of the URL, client ID, scope string, key ID, private key reference (the file path, or a fingerprint of an inline key), and DPoP setting. There is one token for each combination, so changing any of these mints a new token on the next request.
+- **Lifetime:** 59 minutes by default. Okta access tokens expire after 60 minutes, so this leaves a one-minute margin.
+- **Rejected tokens:** If Okta rejects a cached token with a `401` response (for example, because it was revoked or the app's granted scopes changed), the request still fails. However, the token is removed from the cache, so the next request mints a new one. A `use_dpop_nonce` challenge does not remove the token.
+
+To cache tokens for a shorter time, set `OKTA_API_TOKEN_CACHE_MINUTES` (or `token_cache_minutes` in the published config) to a whole number from `1` to `59`. Any other value throws a `ConfigurationException`, since a token cached for longer than 59 minutes could expire before it's removed from the cache. A shorter lifetime means that changes to the service app take effect sooner, but the client requests tokens more often.
+
+```php
+OKTA_API_TOKEN_CACHE_MINUTES=30
+```
+
+Which cache store you use determines how widely a token is shared:
+
+| Cache store | Token is reused by |
+|-------------|--------------------|
+| `array` | The current process only, such as one Artisan command, one web request, or one queue worker until it restarts |
+| `redis`, `database`, `file`, or another persistent store | Every process and server that shares the store |
+
+To remove a cached token yourself, call `ApiToken::forget()` with the scope string, and the same connection array if the request uses one. Running `php artisan cache:clear` also removes it, along with everything else in the store.
+
+```php
+use BoldlyGrow\Okta\ApiToken;
+
+ApiToken::forget(scope: 'okta.users.read');
+```
+
+If you rotate `APP_KEY`, add the old key to `APP_PREVIOUS_KEYS` or clear the cache. Otherwise, tokens that were cached before the rotation can't be decrypted.
+
+### Key Rotation
+
+Service apps support more than one registered public key, so you can rotate a key without downtime:
+
+1. Generate a new key pair with a new `kid` (see [Key Generation Options](#key-generation-options)).
+2. Add the new public key to the service app. Both keys are now active.
+3. Update the private key that you supply (the connection array value, the file at `private_key_path`, or `OKTA_API_PRIVATE_KEY`), and set `OKTA_API_KEY_ID` to the new `kid`.
+4. After you confirm that requests work, deactivate and delete the old key in the app's **Public Keys** table.
+
+The token cache key includes the `kid`, so the first request after you change `OKTA_API_KEY_ID` mints a token with the new key.
+
+To rotate an SSWS token, create a new token, update `OKTA_API_TOKEN`, and then revoke the old token on the **Tokens** tab of **Security > API**.
+
+### Moving from SSWS to OAuth 2.0
+
+You can move an existing integration from an SSWS token to OAuth 2.0 without changing how you call the client, except for adding scopes.
+
+1. Create the service app, register a key, and grant scopes and an admin role (see [Quick Start: OAuth 2.0](#quick-start-oauth-20)).
+2. Add the `scope` argument to every `ApiClient` call. When OAuth is configured, a call without a scope throws a `ScopeException`.
+3. Set `OKTA_API_CLIENT_ID`, `OKTA_API_KEY_ID`, the private key variables, and `OKTA_API_DPOP` if the app requires it. When `OKTA_API_CLIENT_ID` is set, the client uses OAuth 2.0 and ignores `OKTA_API_TOKEN`.
+4. After you confirm that requests work, remove `OKTA_API_TOKEN` and revoke the token in Okta.
+
+### Why Client Secrets Aren't Supported
+
+Okta service apps can also authenticate with a client ID and client secret, but this package doesn't support it. A client secret is only useful for a limited number of endpoints, which don't include the management API endpoints for users, groups, and apps that this package is built for. Okta's org authorization server rejects a client secret for tokens with management API scopes:
+
+```plain
+invalid_client: Client Credentials requests to the Org Authorization Server must use the private_key_jwt token_endpoint_auth_method.
+```
+
+A client secret only works against a custom authorization server for custom scopes, which can't read Okta resources. So the client authenticates with an RSA key pair instead. It signs a JWT with the private key (`private_key_jwt`), and the private key never leaves your application.
 
 ## Log Examples
 

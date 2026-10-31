@@ -27,18 +27,34 @@
     "require-dev": {
         "larastan/larastan": "^2.7 || ^3.0",
         "laravel/pint": "^1.29",
-        "orchestra/testbench": "^9.0 || ^10.0 || ^11.0"
+        "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
+        "pestphp/pest": "^4.7",
+        "pestphp/pest-plugin-laravel": "^4.1"
     },
     "autoload": {
         "psr-4": {
             "BoldlyGrow\\Okta\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "BoldlyGrow\\Okta\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:coverage": "pest --coverage"
+    },
     "extra": {
         "laravel": {
             "providers": [
                 "BoldlyGrow\\Okta\\OktaApiServiceProvider"
             ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
         }
     }
 }

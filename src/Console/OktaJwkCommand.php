@@ -20,10 +20,10 @@ use Illuminate\Console\Command;
  * Examples:
  * ```plain
  * # Generate a new key pair, write the private key, and print the public JWK to register in Okta
- * php artisan okta:jwk --generate --out=okta-private-key.pem
+ * php artisan okta-api-client:jwk --generate --out=okta-private-key.pem
  *
  * # Convert an existing RSA public key PEM to a JWK
- * php artisan okta:jwk okta-public-key.pem
+ * php artisan okta-api-client:jwk okta-public-key.pem
  * ```
  */
 class OktaJwkCommand extends Command
@@ -31,7 +31,7 @@ class OktaJwkCommand extends Command
     /**
      * @var string
      */
-    protected $signature = 'okta:jwk
+    protected $signature = 'okta-api-client:jwk
         {path? : Path to an RSA public key in PEM format}
         {--generate : Generate a new RSA key pair instead of reading an existing PEM file}
         {--out=okta-private-key.pem : File to write the private key to when using --generate}
