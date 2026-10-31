@@ -2,3 +2,4 @@
 /packages
 /vendor
 composer.lock
+/tmp
