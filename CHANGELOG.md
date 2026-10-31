@@ -8,15 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Overview
 
-This release drops support for Laravel 11, which is past the end of its security support. The API, configuration, and authentication are unchanged, so applications on Laravel 12 or 13 can upgrade without code changes. It also fixes requests in applications that use immutable dates (see **Fixed**).
+This release drops support for Laravel 11, which is past the end of its security support. The API, configuration, and authentication are unchanged, so applications on Laravel 12 or 13 can upgrade without code changes. It requires `boldlygrow/audit-log` 3.0, which also drops Laravel 11, and it fixes requests in applications that use immutable dates (see **Fixed**).
 
 The test suite now runs on PHP 8.2 through 8.5 with Laravel 12 and 13.
 
 ### Changed
 
-- **`boldlygrow/audit-log` 3.x is allowed, and 2.0.1 is the minimum**
-    - The constraint is `^2.0.1 || ^3.0`. audit-log 3.0 also drops Laravel 11.
-    - **Why:** You can upgrade audit-log and this package independently. audit-log 2.0.0 rejected the `CarbonImmutable` start times that this release now accepts (see **Fixed**).
+- **Requires `boldlygrow/audit-log` 3.0**
+    - The constraint is `^3.0` instead of `^2.0`. See the [audit-log 3.0.0 release notes](https://github.com/boldlygrow/audit-log/blob/main/CHANGELOG.md#300---2026-10-31).
+    - **Why:** audit-log 3.0 drops Laravel 11 along with this release. audit-log 2.0.0 also rejected the `CarbonImmutable` start times that this release now accepts (see **Fixed**).
+    - **How:** If your `composer.json` also requires `boldlygrow/audit-log`, change it to `^3.0`.
 
 ### Removed
 
@@ -35,7 +36,8 @@ The test suite now runs on PHP 8.2 through 8.5 with Laravel 12 and 13.
 ### Upgrade Steps
 
 1. **Upgrade Laravel first.** Your application must run Laravel 12 or 13. Laravel 12 supports PHP 8.2 or newer, and Laravel 13 requires PHP 8.3 or newer.
-2. **Update the package.** Change your constraint to `"boldlygrow/okta-api-client": "^6.0"`, and run `composer update boldlygrow/okta-api-client`.
+2. **Update the packages.** Change your constraint to `"boldlygrow/okta-api-client": "^6.0"`. If your `composer.json` also requires `boldlygrow/audit-log`, change it to `"^3.0"`. Then run `composer update boldlygrow/okta-api-client boldlygrow/audit-log`, since updating only this package would leave audit-log 2.x locked.
+    - If your application uses more than one of okta-api-client 6.0, gitlab-api-client 5.0, and google-api-client 5.0, upgrade them together. They all require audit-log 3.0, and Composer can install only one audit-log version.
 
 No code or configuration changes are needed.
 
