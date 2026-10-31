@@ -97,7 +97,7 @@ return [
      * every API request carries a signed DPoP proof, so a leaked access token
      * cannot be replayed without the key. Ignored if using SSWS token.
      */
-    'dpop' => env('OKTA_API_DPOP', false),
+    'dpop' => env('OKTA_API_DPOP', true),
 
     /**
      * OAuth Access Token Cache Lifetime (Minutes)
