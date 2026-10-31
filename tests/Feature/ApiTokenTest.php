@@ -139,7 +139,7 @@ it('explains that DPoP must be enabled when Okta requires a DPoP proof', functio
     ]);
 
     expect(fn () => ApiToken::create(scope: 'okta.users.read', connection: oauthConnection()))
-        ->toThrow(UnauthorizedException::class, '(Reason) The DPoP proof JWT header is missing. (Solution) The Okta service app requires DPoP. Set `OKTA_API_DPOP=true`');
+        ->toThrow(UnauthorizedException::class, '(Reason) The DPoP proof JWT header is missing. (Solution) The Okta service app requires DPoP. DPoP is enabled by default, so remove `OKTA_API_DPOP=false`');
 });
 
 it('throws an UnauthorizedException when a successful token endpoint response is not JSON', function () {

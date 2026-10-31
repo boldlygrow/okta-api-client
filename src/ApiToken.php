@@ -36,9 +36,9 @@ use Illuminate\Support\Str;
  * PRIVATE KEY RESOLUTION
  * The RSA private key used to sign the client assertion is provided in one of two ways:
  *
- *   - `private_key`: an inline PEM string. This is the primary mechanism. Fetch the key from wherever you store it
- *     (a secrets manager, a vault, a mounted file) in your own application code and pass it in the connection array,
- *     or set the `OKTA_API_PRIVATE_KEY` value in the published config.
+ *   - `private_key`: an inline PEM string. This is the primary mechanism. To use a secrets manager, have your platform
+ *     load the key into the `OKTA_API_PRIVATE_KEY` environment variable at runtime. Otherwise, fetch it in the
+ *     published config file, or pass it in a connection array. See the README for examples.
  *   - `private_key_path`: a filesystem path to a PEM file (a leading `~` is expanded), suitable for local
  *     development or a secret mounted as a file.
  *
@@ -678,8 +678,8 @@ class ApiToken
                 'Okta API OAuth token request error.',
                 '(Reason) ' . $reason,
                 $dpop_required
-                    ? '(Solution) The Okta service app requires DPoP. Set `OKTA_API_DPOP=true` in your .env file, or'
-                        . ' `dpop` to `true` in the connection array.'
+                    ? '(Solution) The Okta service app requires DPoP. DPoP is enabled by default, so remove'
+                        . ' `OKTA_API_DPOP=false` from your .env file, or the `dpop` key from the connection array.'
                     : '(Solution) Verify the client_id, registered public key, and that the requested scopes are'
                         . ' granted to the service app.',
             ]));

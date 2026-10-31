@@ -107,7 +107,7 @@ class OktaJwkCommand extends Command
         @chmod($out, 0600);
 
         $this->info('Private key written to ' . $out . ' (' . $bits . '-bit RSA). Keep this file secret.');
-        $this->warn('Store it in Google Secret Manager (production) or ~/.config/provisionr/dev (development).');
+        $this->warn('In production, store it in a secrets manager and load it at runtime (see Private Key Storage in the README).');
         $this->newLine();
         $this->line('Register this public JWK in your Okta service app (Add key):');
         $this->newLine();

@@ -199,7 +199,7 @@ To let Okta generate the key pair instead, or to use OpenSSL, `ssh-keygen`, or P
 
 #### Step 3: Register the Public Key in Okta
 
-1. In the service app, locate the the **Public Keys** section and click **Edit** in the top right corner.
+1. In the service app, locate the **Public Keys** section and click **Edit** in the top right corner.
 2. Click **Add key**. Paste the entire JWK JSON, and click **Done**. Click the **Save** button.
     - It is common to experience parsing errors if you are self-generating keys due to expected formats. Use your LLM with redacted characters in your keys to debug any parsing errors.
 3. In the service app, open the **General** tab. In the **Client Credentials** section, click **Edit**.
@@ -2164,12 +2164,17 @@ The `event_type` key should be used for any categorization and log searches.
 | 403         | `okta.api.{method}.error.forbidden`             | ERROR     |
 | 404         | `okta.api.{method}.warning.not-found`           | WARNING   |
 | 405         | `okta.api.{method}.error.method-not-allowed`    | ERROR     |
-| 412         | `okta.api.{method}.error.precondition-failed`   | DEBUG     |
-| 422         | `okta.api.{method}.error.unprocessable`         | DEBUG     |
+| 409         | `okta.api.{method}.error.conflict`              | ERROR     |
+| 412         | `okta.api.{method}.error.precondition-failed`   | ERROR     |
+| 422         | `okta.api.{method}.error.unprocessable`         | ERROR     |
 | 429         | `okta.api.{method}.critical.rate-limit`         | CRITICAL  |
 | 500         | `okta.api.{method}.critical.server-error`       | CRITICAL  |
 | 501         | `okta.api.{method}.error.not-implemented`       | ERROR     |
 | 503         | `okta.api.{method}.critical.server-unavailable` | CRITICAL  |
+| Other 2xx   | `okta.api.{method}.success`                     | DEBUG     |
+| Other 4xx   | `okta.api.{method}.error.client-error`          | ERROR     |
+| Other 5xx   | `okta.api.{method}.critical.server-error`       | CRITICAL  |
+| Other       | `okta.api.{method}.warning.unexpected-status`   | WARNING   |
 
 ### Successful Requests
 
