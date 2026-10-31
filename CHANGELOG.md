@@ -4,6 +4,34 @@ All notable changes to `boldlygrow/okta-api-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-10-31
+
+### Overview
+
+This release drops support for Laravel 11, which is past the end of its security support. The API, configuration, and authentication are unchanged, so applications on Laravel 12 or 13 can upgrade without code changes.
+
+The test suite now runs on PHP 8.2 through 8.5 with Laravel 12 and 13.
+
+### Changed
+
+- **`boldlygrow/audit-log` 3.x is allowed**
+    - The constraint is `^2.0 || ^3.0`. audit-log 3.0 also drops Laravel 11.
+    - **Why:** You can upgrade audit-log and this package independently.
+
+### Removed
+
+- **Laravel 11 is no longer supported**
+    - The `illuminate/*` constraints are `^12.0 || ^13.0`.
+    - **Why:** Laravel 11's security support ended in March 2026. Every 11.x release has security advisories that Composer blocks from installing by default, so it can't be installed or tested without turning off Composer's security blocking.
+    - **How:** Upgrade your application to Laravel 12 or 13 before you upgrade to `^6.0`. An application that must stay on Laravel 11 can stay on `^5.1`.
+
+### Upgrade Steps
+
+1. **Upgrade Laravel first.** Your application must run Laravel 12 or 13. Laravel 12 supports PHP 8.2 or newer, and Laravel 13 requires PHP 8.3 or newer.
+2. **Update the package.** Change your constraint to `"boldlygrow/okta-api-client": "^6.0"`, and run `composer update boldlygrow/okta-api-client`.
+
+No code or configuration changes are needed.
+
 ## [5.1.0] - 2026-10-31
 
 ### Added
@@ -312,14 +340,14 @@ This release focuses on developer experience optimization and simplifying or rem
 
 - **Connection keys are no longer supported**
     - **Why:** Advanced use cases with multiple connection keys usually used dynamic database variables or secrets manager values. Developers often commented out and uncommented blocks of variables instead of switching the default connection. A single set of `OKTA_API_URL` and `OKTA_API_TOKEN` variables aligns with common configuration across packages in the Laravel ecosystem.
-    - **Workaround:** Define your own connection arrays and pass them at runtime.
+    - **How:** Define your own connection arrays and pass them at runtime.
 - **Custom log channels are no longer supported**
     - **Why:** Production applications usually export logs to a centralized service, often alongside STDOUT and STDERR logs from container or serverless environments. Falling back to the application's default log channel or stack removes the separation complexity.
 - **`config/okta-sdk.php` is no longer needed**
     - **Why:** With only the `OKTA_API_URL` and `OKTA_API_TOKEN` environment variables, and all other connections provided at runtime, a customized configuration file is not needed. The package's default config file provides a flat array that reads the `.env` values.
 - **The `json` response property was removed**
     - **Why:** It doubled the payload size for large responses, which increased the memory footprint, and it was rarely used.
-    - **Workaround:** Use `json_encode($response->data)`.
+    - **How:** Use `json_encode($response->data)`.
 
 ### Upgrade Steps
 
@@ -346,50 +374,49 @@ This release focuses on developer experience optimization and simplifying or rem
 
 ### Fixed
 
-- !36 Fix documentation typos in `ApiClient` comments and `README.md`, including the groups `POST` and `PUT` examples that were missing the nested `profile` array
+- **Documentation typos in the `ApiClient` docblocks and `README.md`**
+    - The groups `POST` and `PUT` examples were missing the nested `profile` array.
 
 ## [3.0.0] - 2023-02-26
 
+### Overview
+
+This release renames the package from `glamstack/okta-sdk` to `gitlab-it/okta-sdk`, adds support for Laravel v10 and PHP v8.2, and moves to Semantic Versioning.
+
 ### Added
 
-- !30 Add Laravel v10.x support
-- !30 Add PHP v8.2 support
-- !34 Add throwable `429` exception when Okta rate limit exceeded
-- !18 **GitLab CI pipeline jobs in `.gitlab-ci.yml`**
-    - Add `gitlab-it/laravel-docker` Docker image as default image
-    - Add Code Quality CI template job
-    - Add Dependency Scanning template job
-    - Add Security/SAST template job
-    - Add Secret Detection template job
-    - Add PHPCS PSR-12 code style job
+- Add Laravel v10.x support
+- Add PHP v8.2 support
+- A `429` response throws an `\Exception` when the Okta rate limit is exceeded.
 
 ### Changed
 
-- !17 The `glamstack/okta-sdk` Composer package and namespace has been abandoned and has been renamed to `gitlab-it/okta-sdk`. Update your version constraint to `composer require gitlab-it/okta-sdk:^3.0`.
-- The PHP namespace changed from `Glamstack\Okta` to `GitlabIt\Okta`.
-- The `config/glamstack-okta.php` file has been renamed to `config/okta-sdk.php`. No array changes were made.
-- The config publish tag changed from `glamstack-okta` to `okta-sdk` (`php artisan vendor:publish --tag=okta-sdk`).
-- Changed from a modified version of [Calendar Versioning (CalVer)](https://calver.org/) to using [Semantic Versioning (SemVer)](https://semver.org/).
+- **Renamed from `glamstack/okta-sdk` to `gitlab-it/okta-sdk`**
+    - The `glamstack/okta-sdk` package is abandoned.
+    - The PHP namespace changed from `Glamstack\Okta` to `GitlabIt\Okta`.
+    - The `config/glamstack-okta.php` file is renamed to `config/okta-sdk.php`, with no array changes. The config publish tag changed from `glamstack-okta` to `okta-sdk` (`php artisan vendor:publish --tag=okta-sdk`).
+    - **How:** Follow the **Upgrade Steps** below.
+- **Versions follow [Semantic Versioning (SemVer)](https://semver.org/)**
+    - Versions previously followed a modified version of [Calendar Versioning (CalVer)](https://calver.org/).
 - License changed from `Apache 2.0` to `MIT`.
-- !26 An error that previously was handled with `abort()` will now throw a new `\Exception`.
-- **`ApiClient::handleException` returns an `object` instead of a `string`**
-    - This normalizes the exception response format with the normal response's `error` and `status` arrays.
-    - **Impact:** An exception no longer returns a string error message. It returns an object with `error.code`, `error.message`, `error.reference`, and the standard `status.*` properties. `status.serverError` is always `true` for an exception. The `object.*`, `json.*`, and `headers.*` properties are not returned in an exception response.
-- Update the `ApiClient::delete`, `get`, `post`, and `put` return types from `object|string` to `object`.
-- !30 Changed Composer package dependency from `laravel/framework` to use individual `illuminate/*` packages.
-- Update `ApiClient::parseApiResponse` to refactor check for `paginated_results` property in response
-- Fix PSR-12 formatting in affected files
-- !32 Update `CONTRIBUTING.md` and `README.md` with `okta-sdk` and related v3 content updates
+- An error that was handled with `abort()` throws an `\Exception` instead.
+- **`ApiClient::handleException()` returns an `object` instead of a `string`**
+    - The object has `error.code`, `error.message`, `error.reference`, and the standard `status.*` properties. `status.serverError` is always `true`.
+    - The `object.*`, `json.*`, and `headers.*` properties are not returned for an exception.
+    - **Why:** The exception response has the same `error` and `status` format as a normal response.
+    - **How:** Read the message from `error.message` instead of using the returned string.
+- The `delete()`, `get()`, `post()`, and `put()` return types changed from `object|string` to `object`.
+- The package depends on the individual `illuminate/*` packages instead of `laravel/framework`.
 
 ### Removed
 
-- Remove `$paginated` optional argument from `ApiClient::parseApiResponse` method
+- The optional `$paginated` argument of `ApiClient::parseApiResponse()` was removed.
 
 ### Fixed
 
-- !25 Add missing `$request_data` to `ApiClient::get` and `getPaginatedResults` method when parsing paginated results
-- !33 Fix missing info logs for API responses that were successful (2xx) but not OK (200)
-- !16 Fix Okta pagination results to include first 200 results
+- A paginated `get()` request sends the `$request_data` query parameters. They were dropped when the results were paginated.
+- A successful (2xx) response that isn't `200 OK` is logged at the info level. These responses were not logged.
+- Paginated results include the first 200 results, which were missing.
 
 ### Upgrade Steps
 
@@ -402,23 +429,20 @@ This release focuses on developer experience optimization and simplifying or rem
 
 ### Added
 
-- !12 Add support for Laravel v9.x
-- !13 **`connection_config` construct parameter**
-    - Array parameter to override the configuration file
-    - Array keys are validated
+- Add Laravel v9.x support
+- **`connection_config` constructor parameter**
+    - An array that overrides the configuration file. Its keys are validated.
 
 ### Removed
 
-- !13 **The `api_token` construct parameter was removed from `ApiClient`**
-    - This parameter has been replaced with the `connection_config` parameter.
-    - **Affected Users:** This breaking change is limited to developers that overrode the `api_token` parameter during the initialization of the SDK.
-    - **Symptoms:** You will see the following Type Error when utilizing the SDK.
+- **The `api_token` constructor parameter of `ApiClient` was removed**
+    - The `connection_config` parameter replaces it. This affects only applications that passed `api_token` when they created an `ApiClient`, which fail with this error:
 
         ```bash
         TypeError: Glamstack\Okta\ApiClient::__construct(): Argument #2 ($connection_config) must be of type array, string given on line 1
         ```
 
-    - **Resolution:** Utilize the new `connection_config` construct parameter. This parameter is an array that requires the `base_url`, `api_token`, and `log_channels` to be set.
+    - **How:** Pass a `connection_config` array with the `base_url`, `api_token`, and `log_channels` keys instead.
 
 ## [2.2.1] - 2022-02-01
 
@@ -428,26 +452,24 @@ This is the first release of the Okta SDK that is maintained by GitLab IT Engine
 
 ### Added
 
-- !2 Add `ApiClient` class that can be used in any Laravel class (Controllers, Models, Services, etc.)
-- Add `get()` method that supports list and single record API requests. This includes automatic recursive pagination handling using the `after` key in Okta API header `link` responses.
-- Add `post()` method
-- Add `put()` method
-- Add `delete()` method
-- Add support for multiple Okta instances with different Access Tokens
-- **Comprehensive logging**
-    - Add support for multiple Laravel logging channels for each connection
-    - Add info and error logging for all API requests
-    - Add Okta request ID and rate limit values to all logs
-    - Add `User-Agent` request headers that include Composer package version, Laravel package version, and PHP package version that appear in audit logs on the Okta instance (Ex. `Glamstack-Okta-Sdk/2.2.1 Laravel/8.81.0 PHP/8.1.2`).
+- Add the `ApiClient` class, which can be used in any Laravel class (controllers, models, services, etc.)
+- **`get()` method for list and single record requests**
+    - Pagination is handled automatically and recursively, using the `after` key in the Okta API `link` response headers.
+- Add the `post()`, `put()`, and `delete()` methods
+- Add support for multiple Okta instances with different access tokens
+- **Logging for all API requests**
+    - Each connection can use multiple Laravel log channels.
+    - All API requests have info and error logs, which include the Okta request ID and rate limit values.
+    - The `User-Agent` request header includes the Composer package, Laravel, and PHP versions, which appear in the Okta System Log (ex. `Glamstack-Okta-Sdk/2.2.1 Laravel/8.81.0 PHP/8.1.2`).
 
 ### Changed
 
-- !2 **The `log_channels` config key moved under `auth` and each connection**
+- **The `log_channels` config key moved under `auth` and each connection**
     - `config('glamstack-okta.log_channels')` is now `config('glamstack-okta.auth.log_channels')` and `config('glamstack-okta.{connection_key}.log_channels')`.
-    - **Affected Users:** This breaking change is limited to developers that were testing a pre-release using a branch (ex. `dev-main`) and published the configuration file to their application.
-    - **Symptoms:** You will see errors that the `config('glamstack-okta.log_channels')` array does not exist.
-    - **Resolution:** Follow the README steps for backing up and publishing the configuration file again. You will need to copy any customized configuration keys and values to the updated array schema. No updates to the `.env` variables are needed unless you customized the variable names in your original configuration.
+    - This affects only developers who tested a pre-release from a branch (ex. `dev-main`) and published the configuration file. They see errors that the `config('glamstack-okta.log_channels')` array does not exist.
+    - **How:** Back up the configuration file, publish it again by following the README, and copy any customized keys and values to the new array schema. No `.env` changes are needed unless you customized the variable names.
 
+[6.0.0]: https://github.com/boldlygrow/okta-api-client/compare/5.1.0...6.0.0
 [5.1.0]: https://github.com/boldlygrow/okta-api-client/compare/5.0.0...5.1.0
 [5.0.0]: https://github.com/boldlygrow/okta-api-client/compare/4.2...5.0.0
 [4.2.0]: https://github.com/boldlygrow/okta-api-client/compare/4.1...4.2
