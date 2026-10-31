@@ -23,10 +23,14 @@ use BoldlyGrow\Okta\Exceptions\ServiceUnavailableException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
 use BoldlyGrow\Okta\Exceptions\UnprocessableException;
 use Carbon\Carbon;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Psr\Http\Message\ResponseInterface;
+use Throwable;
 
 class ApiClient
 {
@@ -41,17 +45,21 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/api/org/#get-org-settings
      *
-     * @param  array  $connection  (optional) An array with `url` and `token`. If not set, the
-     *                             `config('okta-api-client')` array will be used that uses the
-     *                             OKTA_API_* variables from your .env file.
+     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                   `config('okta-api-client')` array will be used that uses the
+     *                                   OKTA_API_* variables from your .env file.
+     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string that grants access to the
+     *                                   `test_uri` endpoint (ex. `okta.orgs.read` for the default `org` endpoint). This is
+     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
      *
      * @throws ConfigurationException
      */
-    public static function testConnection(array $connection = []): bool
+    public static function testConnection(array $connection = [], ?string $scope = null): bool
     {
         $response = self::get(
             uri: config('okta-api-client.test_uri'),
-            connection: $connection
+            connection: $connection,
+            scope: $scope
         );
 
         AuditLog::create(
@@ -79,8 +87,9 @@ class ApiClient
 
         $validator = Validator::make($connection, [
             'url' => 'required|url:https',
-            'token' => 'required_without:client_id|alpha_dash|size:42',
-            'client_id' => 'required_without:token|string',
+            'token' => 'nullable|required_without:client_id|alpha_dash|size:42',
+            'client_id' => 'nullable|required_without:token|string',
+            'dpop' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -100,8 +109,8 @@ class ApiClient
         }
 
         // Merge validated keys over the source connection so OAuth keys that have no rule here
-        // (client_id, key_source, key_secret, scopes, key_id, etc.) survive to getRequestHeaders()
-        // and ApiToken::create(). $validator->validated() alone would drop them.
+        // (key_id, private_key, private_key_path) survive to getRequestHeaders() and
+        // ApiToken::create(). $validator->validated() alone would drop them.
         return array_merge($connection, $validator->validated());
     }
 
@@ -119,11 +128,13 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string  $uri         The URI with or without leading slash after `/api/v1/`
-     * @param  array   $data        (optional) Query data to apply to GET request
-     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
-     *                              `config('okta-api-client')` array will be used that uses the
-     *                              OKTA_API_* variables from your .env file.
+     * @param  string       $uri         The URI with or without leading slash after `/api/v1/`
+     * @param  array        $data        (optional) Query data to apply to GET request
+     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                   `config('okta-api-client')` array will be used that uses the
+     *                                   OKTA_API_* variables from your .env file.
+     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
+     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
      *
      * @return object See parseApiResponse() method. The content and schema of the data array can
      *                be found in the API documentation for the endpoint.
@@ -132,13 +143,15 @@ class ApiClient
         string $uri,
         array $data = [],
         array $connection = [],
+        ?string $scope = null,
     ): object {
         $connection = self::validateConnection($connection);
         $event_ms = now();
+        $request_url = $connection['url'] . '/api/v1/' . ltrim($uri, '/');
 
         try {
-            $request = Http::withHeaders(self::getRequestHeaders($connection))->get(
-                url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
+            $request = self::pendingRequest($connection, $scope, 'GET', $request_url)->get(
+                url: $request_url,
                 query: $data
             );
         } catch (RequestException $exception) {
@@ -161,7 +174,8 @@ class ApiClient
         self::throwExceptionIfEnabled(
             method: 'get',
             url: $connection['url'] . '/api/v1/' . ltrim($uri, '/') . $query_string,
-            response: $response
+            response: $response,
+            connection: $connection
         );
 
         // If the response is a paginated response
@@ -182,7 +196,8 @@ class ApiClient
             $response->paginated_results = self::getPaginatedResults(
                 connection: $connection,
                 paginated_url: self::generateNextPaginatedResultUrl($response->headers),
-                records: $response->data
+                records: $response->data,
+                scope: $scope
             );
 
             // Unset property for original request body
@@ -232,11 +247,13 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string  $uri         The URI without leading slash after `/api/v1/`
-     * @param  array   $data        (optional) Post Body array
-     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
-     *                              `config('okta-api-client')` array will be used that uses the
-     *                              OKTA_API_* variables from your .env file.
+     * @param  string       $uri         The URI without leading slash after `/api/v1/`
+     * @param  array        $data        (optional) Post Body array
+     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                   `config('okta-api-client')` array will be used that uses the
+     *                                   OKTA_API_* variables from your .env file.
+     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
+     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
      *
      * @return object See parseApiResponse() method. The content and schema of the data array can
      *                be found in the API documentation for the endpoint.
@@ -244,14 +261,16 @@ class ApiClient
     public static function post(
         string $uri,
         array $data = [],
-        array $connection = []
+        array $connection = [],
+        ?string $scope = null
     ): object {
         $connection = self::validateConnection($connection);
         $event_ms = now();
+        $request_url = $connection['url'] . '/api/v1/' . ltrim($uri, '/');
 
         try {
-            $request = Http::withHeaders(self::getRequestHeaders($connection))->post(
-                url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
+            $request = self::pendingRequest($connection, $scope, 'POST', $request_url)->post(
+                url: $request_url,
                 data: $data
             );
         } catch (RequestException $exception) {
@@ -272,7 +291,8 @@ class ApiClient
         self::throwExceptionIfEnabled(
             method: 'post',
             url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
-            response: $response
+            response: $response,
+            connection: $connection
         );
 
         return $response;
@@ -308,11 +328,13 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string  $uri         The URI without leading slash after `/api/v1/`
-     * @param  array   $data        (optional) Optional request data to send with PUT request
-     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
-     *                              `config('okta-api-client')` array will be used that uses the
-     *                              OKTA_API_* variables from your .env file.
+     * @param  string       $uri         The URI without leading slash after `/api/v1/`
+     * @param  array        $data        (optional) Optional request data to send with PUT request
+     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                   `config('okta-api-client')` array will be used that uses the
+     *                                   OKTA_API_* variables from your .env file.
+     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
+     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
      *
      * @return object See parseApiResponse() method. The content and schema of the data array can
      *                be found in the API documentation for the endpoint.
@@ -320,14 +342,16 @@ class ApiClient
     public static function patch(
         string $uri,
         array $data = [],
-        array $connection = []
+        array $connection = [],
+        ?string $scope = null
     ): object {
         $connection = self::validateConnection($connection);
         $event_ms = now();
+        $request_url = $connection['url'] . '/api/v1/' . ltrim($uri, '/');
 
         try {
-            $request = Http::withHeaders(self::getRequestHeaders($connection))->post(
-                url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
+            $request = self::pendingRequest($connection, $scope, 'POST', $request_url)->post(
+                url: $request_url,
                 data: $data
             );
         } catch (RequestException $exception) {
@@ -348,7 +372,8 @@ class ApiClient
         self::throwExceptionIfEnabled(
             method: 'patch|post',
             url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
-            response: $response
+            response: $response,
+            connection: $connection
         );
 
         return $response;
@@ -375,11 +400,13 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string  $uri         The URI without leading slash after `/api/v1/`
-     * @param  array   $data        (optional) Optional request data to send with PUT request
-     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
-     *                              `config('okta-api-client')` array will be used that uses the
-     *                              OKTA_API_* variables from your .env file.
+     * @param  string       $uri         The URI without leading slash after `/api/v1/`
+     * @param  array        $data        (optional) Optional request data to send with PUT request
+     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                   `config('okta-api-client')` array will be used that uses the
+     *                                   OKTA_API_* variables from your .env file.
+     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
+     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
      *
      * @return object See parseApiResponse() method. The content and schema of the data array can
      *                be found in the API documentation for the endpoint.
@@ -387,14 +414,16 @@ class ApiClient
     public static function put(
         string $uri,
         array $data = [],
-        array $connection = []
+        array $connection = [],
+        ?string $scope = null
     ): object {
         $connection = self::validateConnection($connection);
         $event_ms = now();
+        $request_url = $connection['url'] . '/api/v1/' . ltrim($uri, '/');
 
         try {
-            $request = Http::withHeaders(self::getRequestHeaders($connection))->put(
-                url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
+            $request = self::pendingRequest($connection, $scope, 'PUT', $request_url)->put(
+                url: $request_url,
                 data: $data
             );
         } catch (RequestException $exception) {
@@ -415,7 +444,8 @@ class ApiClient
         self::throwExceptionIfEnabled(
             method: 'put',
             url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
-            response: $response
+            response: $response,
+            connection: $connection
         );
 
         return $response;
@@ -437,11 +467,13 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string  $uri         The URI without leading slash after `/api/v1/`
-     * @param  array   $data        Optional request data to send with DELETE request
-     * @param  array   $connection  (optional) An array with `url` and `token`. If not set, the
-     *                              `config('okta-api-client')` array will be used that uses the
-     *                              OKTA_API_* variables from your .env file.
+     * @param  string       $uri         The URI without leading slash after `/api/v1/`
+     * @param  array        $data        Optional request data to send with DELETE request
+     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                   `config('okta-api-client')` array will be used that uses the
+     *                                   OKTA_API_* variables from your .env file.
+     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
+     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
      *
      * @return object See parseApiResponse() method. The content and schema of the data array can
      *                be found in the API documentation for the endpoint.
@@ -449,14 +481,16 @@ class ApiClient
     public static function delete(
         string $uri,
         array $data = [],
-        array $connection = []
+        array $connection = [],
+        ?string $scope = null
     ): object {
         $connection = self::validateConnection($connection);
         $event_ms = now();
+        $request_url = $connection['url'] . '/api/v1/' . ltrim($uri, '/');
 
         try {
-            $request = Http::withHeaders(self::getRequestHeaders($connection))->delete(
-                url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
+            $request = self::pendingRequest($connection, $scope, 'DELETE', $request_url)->delete(
+                url: $request_url,
                 data: $data
             );
         } catch (RequestException $exception) {
@@ -477,30 +511,117 @@ class ApiClient
         self::throwExceptionIfEnabled(
             method: 'delete',
             url: $connection['url'] . '/api/v1/' . ltrim($uri, '/'),
-            response: $response
+            response: $response,
+            connection: $connection
         );
 
         return $response;
     }
 
     /**
+     * Create a pending HTTP request with the headers for a single Okta API request
+     *
+     * When the OAuth access token is DPoP-bound, each request carries a DPoP proof that is bound to its HTTP method
+     * and URL. If Okta responds with a `use_dpop_nonce` challenge, the request is retried once with a new proof that
+     * includes the server-provided nonce. All other unsuccessful responses are returned without a retry so they are
+     * handled by parseApiResponse() and throwExceptionIfEnabled() as usual.
+     *
+     * Each response is checked by forgetRejectedAccessToken() so that an OAuth access token rejected by Okta is
+     * removed from the cache.
+     *
+     * @param  array<string, mixed>  $connection   The validated connection array
+     * @param  string|null           $scope        The OAuth scope string. Required for OAuth, ignored for SSWS tokens.
+     * @param  string                $http_method  The HTTP method that will be sent (ex. `GET`, `POST`)
+     * @param  string                $url          The full request URL
+     */
+    private static function pendingRequest(
+        array $connection,
+        ?string $scope,
+        string $http_method,
+        string $url
+    ): PendingRequest {
+        return Http::withHeaders(self::getRequestHeaders($connection, $scope, $http_method, $url))
+            ->withResponseMiddleware(function (ResponseInterface $response) use ($connection, $scope): ResponseInterface {
+                self::forgetRejectedAccessToken($connection, $scope, new Response($response));
+
+                return $response;
+            })
+            ->retry(
+                times: 2,
+                sleepMilliseconds: 0,
+                when: function (Throwable $exception, PendingRequest $request) use ($connection, $scope, $http_method, $url): bool {
+                    $dpop_nonce = $exception instanceof RequestException
+                        ? DpopProof::nonceChallenge($exception->response)
+                        : null;
+
+                    if ($dpop_nonce === null) {
+                        return false;
+                    }
+
+                    // replaceHeaders() is required since withHeaders() merges recursively and would send both proofs
+                    $request->replaceHeaders(self::getRequestHeaders($connection, $scope, $http_method, $url, $dpop_nonce));
+
+                    return true;
+                },
+                throw: false
+            );
+    }
+
+    /**
+     * Remove the cached OAuth access token if Okta rejected it
+     *
+     * A `401` response means that Okta did not accept the access token, such as when it was revoked or the service
+     * app's granted scopes changed after it was minted. The token is removed from the cache so that the next request
+     * mints a new one instead of being rejected for the rest of the cache lifetime. A `use_dpop_nonce` challenge is
+     * also a `401` response, but the token is still valid and the request is retried by pendingRequest(). An SSWS
+     * token is not cached and is ignored.
+     *
+     * @param  array<string, mixed>  $connection  The validated connection array
+     * @param  string|null           $scope       The OAuth scope string that the access token was minted for
+     * @param  Response              $response    The response to a single request attempt
+     */
+    private static function forgetRejectedAccessToken(array $connection, ?string $scope, Response $response): void
+    {
+        if ($response->status() !== 401 || empty($connection['client_id']) || DpopProof::nonceChallenge($response) !== null) {
+            return;
+        }
+
+        ApiToken::forget(scope: $scope, connection: $connection);
+    }
+
+    /**
      * Set the request headers for the Okta API request
      *
-     * @param  array  $connection  An array with `url` and `token`.
+     * @param  array        $connection   An array with `url` and either `token` or `client_id` and private key.
+     * @param  string|null  $scope        The OAuth scope string. Required for OAuth, ignored for SSWS tokens.
+     * @param  string       $http_method  The HTTP method that will be sent, used for the DPoP proof
+     * @param  string       $url          The full request URL, used for the DPoP proof
+     * @param  string|null  $dpop_nonce   (optional) The `DPoP-Nonce` value from a `use_dpop_nonce` challenge
      */
-    private static function getRequestHeaders(array $connection): array
-    {
+    private static function getRequestHeaders(
+        array $connection,
+        ?string $scope,
+        string $http_method,
+        string $url,
+        ?string $dpop_nonce = null
+    ): array {
         $composer_array = json_decode((string) file_get_contents(base_path('composer.json')), true);
         $package_name = Str::title($composer_array['name']);
 
-        // Use OAuth 2.0 Bearer token when an OAuth service app (client_id) is configured, otherwise fall back to
-        // the legacy SSWS API token. The Bearer token is minted and cached by ApiToken.
-        $authorization = ! empty($connection['client_id'])
-            ? 'Bearer ' . ApiToken::create(connection: $connection)
-            : 'SSWS ' . $connection['token'];
+        // Use an OAuth 2.0 access token when an OAuth service app (client_id) is configured, otherwise fall back to
+        // the legacy SSWS API token. The access token (and the DPoP proof when enabled) is minted by ApiToken.
+        $authorization_headers = ! empty($connection['client_id'])
+            ? ApiToken::authorizationHeaders(
+                scope: $scope,
+                connection: $connection,
+                http_method: $http_method,
+                http_url: $url,
+                dpop_nonce: $dpop_nonce
+            )
+            : ['Authorization' => 'SSWS ' . $connection['token']];
 
         return [
-            'Authorization' => $authorization,
+            ...$authorization_headers,
             'User-Agent' => implode(' ', [
                 $package_name,
                 'boldlygrow/okta-api-client',
@@ -632,21 +753,23 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/core-okta-api/#pagination
      *
-     * @param  array   $connection     An array with `url` and `token`.
-     * @param  string  $paginated_url  The paginated URL generated in the get() method
-     * @param  array   $records        An array of records from the first page to append to paginated results
+     * @param  array        $connection     An array with `url` and `token`.
+     * @param  string       $paginated_url  The paginated URL generated in the get() method
+     * @param  array        $records        An array of records from the first page to append to paginated results
+     * @param  string|null  $scope          (optional) The OAuth scope string from the originating get() request
      *
      * @return array An array of the response objects for each page combined.
      */
     private static function getPaginatedResults(
         array $connection,
         string $paginated_url,
-        array $records = []
+        array $records = [],
+        ?string $scope = null
     ): array {
         do {
             $event_ms = now();
 
-            $request = Http::withHeaders(self::getRequestHeaders($connection))->get(
+            $request = self::pendingRequest($connection, $scope, 'GET', $paginated_url)->get(
                 url: $paginated_url
             );
 
@@ -660,7 +783,8 @@ class ApiClient
             self::throwExceptionIfEnabled(
                 method: 'get|paginated',
                 url: $paginated_url,
-                response: $response
+                response: $response,
+                connection: $connection
             );
 
             $records[] = $response->data;
@@ -745,22 +869,27 @@ class ApiClient
      *   Ex. `{"errorCauses":[{"errorSummary":"firstName: The field cannot be left blank"}]}`
      * - `error` and `error_description` are returned by the OAuth 2.0 token endpoints.
      *   Ex. `{"error":"invalid_client","error_description":"The client secret is invalid."}`
+     * - OAuth 2.0 resource server errors (ex. an invalid DPoP proof) have an empty body and return the
+     *   `error` and `error_description` in the `WWW-Authenticate` header instead.
+     *   Ex. `DPoP error="invalid_dpop_proof", error_description="'htu' claim in the DPoP proof JWT is invalid."`
      *
      * @see https://developer.okta.com/docs/reference/error-codes/
      *
      * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
      *
-     * @return ?string The reason for the error or null if the response body is empty
+     * @return ?string The reason for the error or null if the response body and WWW-Authenticate header are empty
      *                 Ex. `E0000007 Not found: Resource not found: xyz (User)`
      *                 Ex. `E0000001 Api validation failed: profile (Causes) firstName: The field cannot be left blank`
+     *                 Ex. `invalid_dpop_proof 'htu' claim in the DPoP proof JWT is invalid.`
      */
     private static function parseErrorMessage(object $response): ?string
     {
         $data = $response->data ?? null;
 
-        // An empty body (ex. a 204 No Content or a non-JSON body that could not be decoded) has no reason
+        // An empty body (ex. a 204 No Content or a non-JSON body that could not be decoded) has no reason in the
+        // body, although an OAuth 2.0 resource server error has the reason in the WWW-Authenticate header.
         if (blank($data) || ((is_object($data) || is_array($data)) && blank((array) $data))) {
-            return null;
+            return self::parseAuthenticateHeaderError((array) ($response->headers ?? []));
         }
 
         $reason = [];
@@ -801,6 +930,29 @@ class ApiClient
         // The response body does not use a known error key (ex. an HTML error page from a proxy or
         // an undocumented response), so the entire body is returned to avoid discarding the reason.
         return Str::limit(is_scalar($data) ? (string) $data : (string) json_encode($data), 1000);
+    }
+
+    /**
+     * Parse the OAuth 2.0 error from the WWW-Authenticate response header
+     *
+     * @link https://datatracker.ietf.org/doc/html/rfc6750#section-3
+     *
+     * @param  array<string, mixed>  $headers  The headers array formatted with $this->convertHeadersToArray()
+     *
+     * @return ?string The `error` and `error_description` or null if the header has no error
+     *                 Ex. `invalid_dpop_proof The DPoP proof JWT has already been used.`
+     */
+    private static function parseAuthenticateHeaderError(array $headers): ?string
+    {
+        $header = collect($headers)->first(fn ($value, $key) => strcasecmp((string) $key, 'WWW-Authenticate') === 0);
+
+        if (! is_string($header)) {
+            return null;
+        }
+
+        preg_match_all('/\b(error|error_description)="([^"]*)"/', $header, $matches, PREG_SET_ORDER);
+
+        return collect($matches)->pluck(2)->filter()->implode(' ') ?: null;
     }
 
     /**
@@ -990,9 +1142,12 @@ class ApiClient
      *
      * This method checks whether the .env variable or config value for `OKTA_API_EXCEPTIONS=true`
      *
-     * @param  string  $method    The lowercase name of the method that calls this function (ex. `get`)
-     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
-     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
+     * @param  string                $method      The lowercase name of the method that calls this function (ex. `get`)
+     * @param  string                $url         The URL of the API call including the concatenated base URL and URI
+     * @param  object                $response    The HTTP response formatted with $this->parseApiResponse()
+     * @param  array<string, mixed>  $connection  (optional) The validated connection array used for the request,
+     *                                            which determines the OAuth or SSWS wording of a 401 error. If not
+     *                                            set, the `config('okta-api-client')` array is used.
      *
      * @throws BadRequestException
      * @throws ConflictException
@@ -1009,7 +1164,8 @@ class ApiClient
     protected static function throwExceptionIfEnabled(
         string $method,
         string $url,
-        object $response
+        object $response,
+        array $connection = []
     ): void {
         if (config('okta-api-client.exceptions') == true) {
             $error_message = self::parseErrorMessage($response);
@@ -1032,7 +1188,13 @@ class ApiClient
                 case 400:
                     throw new BadRequestException($message);
                 case 401:
-                    $message = ! empty(config('okta-api-client.client_id'))
+                    // The authentication mode is determined by the connection that was used for the request, so an
+                    // SSWS connection array is not reported as OAuth when the config has a client_id (and vice versa).
+                    $client_id = empty($connection)
+                        ? config('okta-api-client.client_id')
+                        : ($connection['client_id'] ?? null);
+
+                    $message = ! empty($client_id)
                         ? implode(' ', [
                             'The OAuth access token was rejected.',
                             '(Reason) It may be expired, or the requested scopes are not granted to the service app.',
@@ -1040,9 +1202,10 @@ class ApiClient
                             'registered in the Okta app JWKSet.',
                         ])
                         : implode(' ', [
-                            'The `OKTA_API_TOKEN` has been configured but is invalid.',
+                            'The SSWS API token was rejected.',
                             '(Reason) This usually happens if it does not exist or expired after 30 days of inactivity.',
-                            '(Solution) Please generate a new API Token and update the variable in your `.env` file.',
+                            '(Solution) Please generate a new API token and update the `OKTA_API_TOKEN` variable in your',
+                            '`.env` file, or the `token` in your connection array.',
                         ]);
                     throw new UnauthorizedException($message);
                 case 403:
