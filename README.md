@@ -6,7 +6,7 @@
 
 The Okta API Client is an open source [Composer](https://getcomposer.org/) package for use in Laravel applications for connecting to Okta for provisioning and deprovisioning of users, groups, applications, and other related functionality.
 
-Please use at your own risk and create merge requests for any bugs that you encounter.
+Please use at your own risk and create pull requests for any bugs that you encounter.
 
 ### Problem Statement
 
@@ -103,7 +103,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 
 ### Maintainers
 
-| Name | GitLab Handle | Email |
+| Name | GitHub Handle | Email |
 |------|---------------|-------|
 | [Jeff Martin](https://www.linkedin.com/in/jeffersonmmartin/) | [@jeffersonmartin](https://github.com/jeffersonmartin) | `jeff [at] boldlygrow [dot] us` |
 
@@ -119,13 +119,13 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 | Requirement | Version                     |
 |-------------|-----------------------------|
 | PHP         | `^8.2` (up to 8.5 tested)   |
-| Laravel     | `^11.0`, `^12.0`, `^13.0`   |
+| Laravel     | `^12.0`, `^13.0`            |
 
 OAuth 2.0 authentication requires no additional Composer packages; the JWT client assertion is signed with the `openssl` extension. This package does not integrate with any secrets manager, so there is no cloud SDK dependency. If you use a secrets manager, your platform or your own application code loads the signing key from it (see [Private Key Storage](#private-key-storage)).
 
 ### Upgrade Guide
 
-See the [changelog](CHANGELOG.md) for release notes. If you are upgrading from `provisionesta/okta-api-client` (4.x), read the [5.0 release notes](CHANGELOG.md#500---2026-10-31) for the package rename, namespace change, and OAuth 2.0 authentication options.
+See the [changelog](CHANGELOG.md) for release notes. If you are upgrading from 5.x, read the [6.0 release notes](CHANGELOG.md#600---2026-10-31) for the supported Laravel versions. If you are upgrading from `provisionesta/okta-api-client` (4.x), read the [5.0 release notes](CHANGELOG.md#500---2026-10-31) for the package rename, namespace change, and OAuth 2.0 authentication options.
 
 ### Add Composer Package
 
