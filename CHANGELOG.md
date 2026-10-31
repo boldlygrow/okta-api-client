@@ -4,7 +4,14 @@ All notable changes to `boldlygrow/okta-api-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.1.0] - 2026-10-31
+
+### Added
+
+- **PHPStan types for API responses**
+    - `ApiClient` defines the `ApiResponse`, `ApiPaginatedResponse`, `ApiErrorResponse`, `ApiResponseStatus`, and `ApiResponseHeaders` types. Import them in your application with `@phpstan-import-type ApiResponse from ApiClient`.
+    - `get()`, `post()`, `patch()`, `put()`, and `delete()` are documented as returning `ApiResponse` instead of `object`, and every `$connection` parameter is documented as `array<string, mixed>`.
+    - **Why:** With a return type of `object`, PHPStan and Larastan couldn't check the `data`, `headers`, and `status` properties that you read from a response.
 
 ### Changed
 
@@ -12,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     - `OKTA_API_DPOP` (the `dpop` config key) and the connection array `dpop` key now default to `true`. Both defaulted to `false` in 5.0.0.
     - **Why:** A DPoP-bound access token cannot be replayed if it leaks, and we recommend leaving **Require Demonstrating Proof of Possession (DPoP) header in token requests** enabled on the Okta service app. The default now matches that recommendation.
     - **How:** If your service app does not have the DPoP setting enabled, set `OKTA_API_DPOP=false`, or `'dpop' => false` in each connection array, before you upgrade. SSWS connections are unaffected.
+    - When the service app requires DPoP and the client has it disabled, the `UnauthorizedException` now says to remove `OKTA_API_DPOP=false` or the connection array `dpop` key, instead of setting it to `true`.
     - This is a minor release instead of a patch because OAuth connections that did not set `dpop` change behavior.
 - **The README recommends loading secrets into environment variables**
     - Most applications run in a container or on a VM, where the platform can load secrets manager values into `OKTA_API_CLIENT_ID` and `OKTA_API_PRIVATE_KEY` at runtime. Added examples for Amazon ECS with Parameter Store and Cloud Run with Secret Manager.
@@ -19,6 +27,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
     - Connection arrays are recommended when the credentials vary per tenant or change at runtime.
     - **Why:** The README recommended connection arrays for any secrets manager, but they are only needed when the credentials change at runtime. The credentials for a single service app rarely change, and most platforms can load them into environment variables without any code.
     - Replaced the `app(OktaKeyResolver::class)` config file example, which could not use the `Cache` facade that it recommended, since config files load before service providers.
+    - `php artisan okta-api-client:jwk --generate` now points to the README's **Private Key Storage** section instead of recommending Google Secret Manager and a `~/.config/provisionr/dev` directory.
+- **The README separates the OAuth 2.0 and SSWS setup**
+    - **Environment Variables** is split into **OAuth 2.0 Variables** and **SSWS API Token Variables (Legacy)**. Each variable is marked as required, as one of the two private key options, or as optional.
+    - The OAuth 2.0 and SSWS connection array examples have their own headings.
+    - The OAuth 2.0 quick start says to choose the classic experience when you create the service app, and to save the public key in the **Public Keys** section before you edit **Client Credentials**.
+    - The SSWS quick start warns against creating the token with a Super Admin account.
+    - **Why:** The single variables table mixed OAuth 2.0 and SSWS variables, so it wasn't clear which ones each setup needed.
+
+### Fixed
+
+- **Every 4xx and 5xx response throws the exception for its status code**
+    - In 5.0.0, a status code without its own log event type, such as `206`, `409`, `410`, `502`, or `504`, failed with an `ErrorException` (`Undefined array key`) while the response was being logged, even with `OKTA_API_EXCEPTIONS=false`. A `304` failed with a `TypeError`.
+    - A `409` now throws `ConflictException`, which 5.0.0 never reached. Any other 4xx or 5xx code without its own exception throws `BadRequestException` or `ServerErrorException`, as the README's exceptions table describes.
+    - A `501` returned the response without an exception in 5.0.0, and now throws `ServerErrorException` when `OKTA_API_EXCEPTIONS=true`.
+    - A `409` is logged as `okta.api.{method}.error.conflict`. Other status codes without their own event type are logged as `okta.api.{method}.success` (2xx), `okta.api.{method}.error.client-error` (4xx), `okta.api.{method}.critical.server-error` (5xx), or `okta.api.{method}.warning.unexpected-status` (anything else). The README's **Event Types** table lists them.
+    - **Why:** An `ErrorException` doesn't include the status code or the reason that Okta returned, and it was thrown before the request was logged, so these failures couldn't be handled or searched for.
+    - **How:** If you catch `ErrorException` around API calls, catch the exceptions in `BoldlyGrow\Okta\Exceptions` instead. If you handle a `501` response object with exceptions enabled, catch `ServerErrorException` instead.
+- **Connections that can't be JSON encoded no longer share a cached access token**
+    - The token cache key is an MD5 hash of the JSON-encoded `url`, `client_id`, `key_id`, `private_key_path`, scope string, and DPoP setting. In 5.0.0, if one of these values wasn't valid UTF-8, encoding failed and the key was the hash of an empty string.
+    - Every connection that failed to encode shared that one cache key, so a connection could be given an access token that was minted for a different service app or scope.
+    - `ApiToken::create()`, and any API request that needs a token, now throws a `JsonException` instead.
+    - **Why:** An access token carries the scopes and admin role of the service app that minted it, so it must never be reused for another connection.
+    - **How:** If you see a `JsonException` from `ApiToken`, check the connection values and the `scope` argument for invalid UTF-8 bytes.
+- The README's **Event Types** table lists `412` and `422` responses at the `ERROR` level that they're logged at, instead of `DEBUG`.
+- `ApiClient::handleException()` returns `data` (`null`) and `headers` (an empty array) with the `error` and `status` properties, so code that reads `$response->data` from an error response doesn't fail with an undefined property.
+- `php artisan okta-api-client:jwk --generate` prints an error and exits with a failure code if OpenSSL can't export the generated key pair. In 5.0.0, it could write an empty private key file and print the public JWK as if it had succeeded.
 
 ## [5.0.0] - 2026-10-31
 
@@ -414,7 +448,7 @@ This is the first release of the Okta SDK that is maintained by GitLab IT Engine
     - **Symptoms:** You will see errors that the `config('glamstack-okta.log_channels')` array does not exist.
     - **Resolution:** Follow the README steps for backing up and publishing the configuration file again. You will need to copy any customized configuration keys and values to the updated array schema. No updates to the `.env` variables are needed unless you customized the variable names in your original configuration.
 
-[Unreleased]: https://github.com/boldlygrow/okta-api-client/compare/5.0.0...HEAD
+[5.1.0]: https://github.com/boldlygrow/okta-api-client/compare/5.0.0...5.1.0
 [5.0.0]: https://github.com/boldlygrow/okta-api-client/compare/4.2...5.0.0
 [4.2.0]: https://github.com/boldlygrow/okta-api-client/compare/4.1...4.2
 [4.1.0]: https://github.com/boldlygrow/okta-api-client/compare/4.0...4.1
