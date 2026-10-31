@@ -248,7 +248,7 @@ This release adds OAuth 2.0 authentication, moves the package to the `BoldlyGrow
     - If the service app has **Require Demonstrating Proof of Possession (DPoP) header in token requests** enabled, set `OKTA_API_DPOP=true` (or `'dpop' => true` in the connection array). No additional keys are needed.
 8. This is not an exhaustive list. Review the `README.md` for the latest syntax and usage guidelines.
 
-*Releases prior to 5.0 were developed on GitLab as `provisionesta/okta-api-client` (4.x), `gitlab-it/okta-sdk` (3.x), and `glamstack/okta-sdk` (2.x). The `!N` tokens in the entries below are GitLab merge request references, retained for historical accuracy.*
+*Releases prior to 5.0 were developed on GitLab as `provisionesta/okta-api-client` (4.x), `gitlab-it/okta-sdk` (3.x), and `glamstack/okta-sdk` (2.x).*
 
 ## [4.2.0] - 2025-04-27
 
