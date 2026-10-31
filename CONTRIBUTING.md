@@ -22,6 +22,10 @@ All merge requests can be assigned to one or all of the maintainers at your disc
 
 Release notes live in the root `CHANGELOG.md`, newest release first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with two project-specific additions.
 
+In Claude Code, run `/changelog` (or `/changelog 5.2.0`) to draft the next entry from the commits since the last tag. The skill in `.claude/skills/changelog/` follows the rules below.
+
+#### Format
+
 - Each release is an `h2` heading of the form `## [5.0.0] - 2026-10-31`, with a matching link reference at the bottom of the file. Because some historical git tags are two-component (`4.2`, `3.0`), those link references point at the real tag names even though the heading uses the full `X.Y.Z` label.
 - Categories are `h3` and use Keep a Changelog's vocabulary — **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security** — plus **Overview** and **Upgrade Steps**, which are reserved for major releases. Omit any category with nothing to report; do not write "none this release".
 - Deprecations and removals go in their own category. Do not bury them inside **Changed**, where nobody looking for them will find them.
@@ -29,6 +33,21 @@ Release notes live in the root `CHANGELOG.md`, newest release first. The format 
 - Start each entry that has details with a short bold headline that says what changed (ex. `**Exception messages include the reason that Okta returned**`), and put the details, `**Why:**`, and `**How:**` in sub-bullets underneath. Keep each sub-bullet to one or two sentences so the headlines can be skimmed. A one-line entry with no details does not need the bold.
 - Large releases may group entries under `h4` thematic subheads inside a category (see 5.0's **Added**).
 - Tag releases as `X.Y.Z` with no `v` prefix.
+
+#### What to Include
+
+- Write for people who use the package, and describe each change relative to the previous release tag. Something that was added and then changed or removed before a release never shipped, so leave it out.
+- Read the diff, not just the commit messages. A one-line change labeled `fix:` can change behavior for existing users.
+- A changed default value is a behavior change. List it under **Changed** with a `**How:**` sub-bullet for the users it affects, and check that the config file, the code fallbacks, the tests, and the README all agree on the new default.
+- Leave out changes that don't affect users, such as CI, lint fixes, and test refactors, unless they change what users can rely on (for example, the supported PHP or Laravel versions).
+
+#### Releasing
+
+1. Add entries under `## [Unreleased]` at the top of `CHANGELOG.md` as changes are merged.
+2. Choose the version. Use a major version for breaking changes, a minor version for new features or a changed default, and a patch version for bug fixes and documentation only.
+3. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` with the release date, and add `[X.Y.Z]: https://github.com/boldlygrow/okta-api-client/compare/<previous tag>...X.Y.Z` to the link references at the bottom.
+4. If `README.md` links to the release section (the **Upgrade Guide** links the latest major release), update the anchor, since it includes the date (ex. `#500---2026-10-31`).
+5. Run `composer test`, merge to `main`, and tag the merge commit `X.Y.Z`.
 
 ### Laravel Test Application
 
