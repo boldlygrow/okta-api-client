@@ -4,6 +4,17 @@ All notable changes to `boldlygrow/okta-api-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The README recommends loading secrets into environment variables**
+    - Most applications run in a container or on a VM, where the platform can load secrets manager values into `OKTA_API_CLIENT_ID` and `OKTA_API_PRIVATE_KEY` at runtime. Added examples for Amazon ECS with Parameter Store and Cloud Run with Secret Manager.
+    - If your platform can't set environment variables from a secrets manager, fetch the secrets for the whole application in the published `config/okta-api-client.php`. Added examples for AWS Systems Manager Parameter Store and Google Secret Manager, with notes on config caching and secret rotation. This package still doesn't depend on either SDK.
+    - Connection arrays are recommended when the credentials vary per tenant or change at runtime.
+    - **Why:** The README recommended connection arrays for any secrets manager, but they are only needed when the credentials change at runtime. The credentials for a single service app rarely change, and most platforms can load them into environment variables without any code.
+    - Replaced the `app(OktaKeyResolver::class)` config file example, which could not use the `Cache` facade that it recommended, since config files load before service providers.
+
 ## [5.0.0] - 2026-10-31
 
 ### Overview
@@ -398,6 +409,7 @@ This is the first release of the Okta SDK that is maintained by GitLab IT Engine
     - **Symptoms:** You will see errors that the `config('glamstack-okta.log_channels')` array does not exist.
     - **Resolution:** Follow the README steps for backing up and publishing the configuration file again. You will need to copy any customized configuration keys and values to the updated array schema. No updates to the `.env` variables are needed unless you customized the variable names in your original configuration.
 
+[Unreleased]: https://github.com/boldlygrow/okta-api-client/compare/5.0.0...HEAD
 [5.0.0]: https://github.com/boldlygrow/okta-api-client/compare/4.2...5.0.0
 [4.2.0]: https://github.com/boldlygrow/okta-api-client/compare/4.1...4.2
 [4.1.0]: https://github.com/boldlygrow/okta-api-client/compare/4.0...4.1
