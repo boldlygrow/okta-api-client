@@ -8,15 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Overview
 
-This release drops support for Laravel 11, which is past the end of its security support. The API, configuration, and authentication are unchanged, so applications on Laravel 12 or 13 can upgrade without code changes.
+This release drops support for Laravel 11, which is past the end of its security support. The API, configuration, and authentication are unchanged, so applications on Laravel 12 or 13 can upgrade without code changes. It also fixes requests in applications that use immutable dates (see **Fixed**).
 
 The test suite now runs on PHP 8.2 through 8.5 with Laravel 12 and 13.
 
 ### Changed
 
-- **`boldlygrow/audit-log` 3.x is allowed**
-    - The constraint is `^2.0 || ^3.0`. audit-log 3.0 also drops Laravel 11.
-    - **Why:** You can upgrade audit-log and this package independently.
+- **`boldlygrow/audit-log` 3.x is allowed, and 2.0.1 is the minimum**
+    - The constraint is `^2.0.1 || ^3.0`. audit-log 3.0 also drops Laravel 11.
+    - **Why:** You can upgrade audit-log and this package independently. audit-log 2.0.0 rejected the `CarbonImmutable` start times that this release now accepts (see **Fixed**).
 
 ### Removed
 
@@ -24,6 +24,13 @@ The test suite now runs on PHP 8.2 through 8.5 with Laravel 12 and 13.
     - The `illuminate/*` constraints are `^12.0 || ^13.0`.
     - **Why:** Laravel 11's security support ended in March 2026. Every 11.x release has security advisories that Composer blocks from installing by default, so it can't be installed or tested without turning off Composer's security blocking.
     - **How:** Upgrade your application to Laravel 12 or 13 before you upgrade to `^6.0`. An application that must stay on Laravel 11 can stay on `^5.1`.
+
+### Fixed
+
+- **Requests work in an application that uses immutable dates**
+    - In 5.x, every request failed with a `TypeError` if the application called `Date::use(CarbonImmutable::class)`, because the request start time was typed as `Carbon`. It's now typed as `CarbonInterface`.
+    - **Why:** With immutable dates, `now()` returns a `CarbonImmutable`, which isn't a `Carbon`.
+- The `okta.api.get.process.pagination.finished` log includes the number of combined records in `count_records`, and the average time per record in `duration_ms_per_record`. Both were always null.
 
 ### Upgrade Steps
 
