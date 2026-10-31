@@ -12,7 +12,7 @@ parameters:
         - src
 
     # The level 9 is the highest level
-    level: 7
+    level: 8
 
     # Every @phpstan-ignore must say why in parentheses, e.g. `// @phpstan-ignore argument.type (reason)`.
     # An ignore without a reason doesn't suppress anything and is reported as ignore.noComment.

@@ -982,17 +982,21 @@ An exception is thrown for any 4xx or 5xx responses. All responses are automatic
 
 ### Exceptions
 
-| Code | Exception Class                                             |
-|------|-------------------------------------------------------------|
-| 400  | `BoldlyGrow\Okta\Exceptions\BadRequestException`         |
-| 401  | `BoldlyGrow\Okta\Exceptions\UnauthorizedException`       |
-| 403  | `BoldlyGrow\Okta\Exceptions\ForbiddenException`          |
-| 404  | `BoldlyGrow\Okta\Exceptions\NotFoundException`           |
-| 412  | `BoldlyGrow\Okta\Exceptions\PreconditionFailedException` |
-| 422  | `BoldlyGrow\Okta\Exceptions\UnprocessableException`      |
-| 429  | `BoldlyGrow\Okta\Exceptions\RateLimitException`          |
-| 500  | `BoldlyGrow\Okta\Exceptions\ServerErrorException`        |
-| 503  | `BoldlyGrow\Okta\Exceptions\ServiceUnavailableException` |
+| Code      | Exception Class                                          |
+|-----------|----------------------------------------------------------|
+| 400       | `BoldlyGrow\Okta\Exceptions\BadRequestException`         |
+| 401       | `BoldlyGrow\Okta\Exceptions\UnauthorizedException`       |
+| 403       | `BoldlyGrow\Okta\Exceptions\ForbiddenException`          |
+| 404       | `BoldlyGrow\Okta\Exceptions\NotFoundException`           |
+| 405       | `BoldlyGrow\Okta\Exceptions\MethodNotAllowedException`   |
+| 409       | `BoldlyGrow\Okta\Exceptions\ConflictException`           |
+| 412       | `BoldlyGrow\Okta\Exceptions\PreconditionFailedException` |
+| 422       | `BoldlyGrow\Okta\Exceptions\UnprocessableException`      |
+| 429       | `BoldlyGrow\Okta\Exceptions\RateLimitException`          |
+| 500       | `BoldlyGrow\Okta\Exceptions\ServerErrorException`        |
+| 503       | `BoldlyGrow\Okta\Exceptions\ServiceUnavailableException` |
+| Other 4xx | `BoldlyGrow\Okta\Exceptions\BadRequestException`         |
+| Other 5xx | `BoldlyGrow\Okta\Exceptions\ServerErrorException`        |
 
 ### Exception Messages
 

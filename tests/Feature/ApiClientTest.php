@@ -3,11 +3,14 @@
 use BoldlyGrow\Okta\ApiClient;
 use BoldlyGrow\Okta\Exceptions\BadRequestException;
 use BoldlyGrow\Okta\Exceptions\ConfigurationException;
+use BoldlyGrow\Okta\Exceptions\ConflictException;
 use BoldlyGrow\Okta\Exceptions\ForbiddenException;
 use BoldlyGrow\Okta\Exceptions\NotFoundException;
+use BoldlyGrow\Okta\Exceptions\ServerErrorException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 it('accepts an SSWS connection from the config when the client_id is not set', function () {
     config()->set([
@@ -149,6 +152,49 @@ it('includes the WWW-Authenticate error in the exception when the response body 
     expect(fn () => ApiClient::get(uri: 'users/00u1', connection: oauthConnection(['dpop' => true]), scope: 'okta.users.read'))
         ->toThrow(BadRequestException::class, "(Reason) invalid_dpop_proof 'iat' claim in the DPoP proof JWT is invalid.");
 });
+
+it('throws a ConflictException for a 409 response', function () {
+    Http::fake([
+        'example.okta.com/api/v1/groups/00g1' => Http::response(['errorCode' => 'E0000001', 'errorSummary' => 'Conflict'], 409),
+    ]);
+
+    expect(fn () => ApiClient::put(uri: 'groups/00g1', connection: ['url' => 'https://example.okta.com', 'token' => str_repeat('a', 42)]))
+        ->toThrow(ConflictException::class, 'PUT 409 https://example.okta.com/api/v1/groups/00g1 (Reason) E0000001 Conflict');
+});
+
+it('throws the exception for the range of a 4xx or 5xx status code without its own exception', function (int $status, string $exception) {
+    Http::fake([
+        'example.okta.com/api/v1/users/00u1' => Http::response('', $status),
+    ]);
+
+    expect(fn () => ApiClient::get(uri: 'users/00u1', connection: ['url' => 'https://example.okta.com', 'token' => str_repeat('a', 42)]))
+        ->toThrow($exception, 'GET ' . $status . ' https://example.okta.com/api/v1/users/00u1');
+})->with([
+    'gone' => [410, BadRequestException::class],
+    'not implemented' => [501, ServerErrorException::class],
+    'bad gateway' => [502, ServerErrorException::class],
+    'gateway timeout' => [504, ServerErrorException::class],
+]);
+
+it('logs a status code without its own event type with the event type for its range', function (int $status, string $event_type, string $level) {
+    config()->set('okta-api-client.exceptions', false);
+    Log::spy();
+    Http::fake([
+        'example.okta.com/api/v1/users/00u1' => Http::response('', $status),
+    ]);
+
+    $response = ApiClient::get(uri: 'users/00u1', connection: ['url' => 'https://example.okta.com', 'token' => str_repeat('a', 42)]);
+
+    expect($response->status->code)->toBe($status);
+    Log::shouldHaveReceived('log')
+        ->withArgs(fn (string $log_level, string $message, array $context) => $log_level === $level && $context['event_type'] === $event_type)
+        ->once();
+})->with([
+    'partial content' => [206, 'okta.api.get.success', 'debug'],
+    'not modified' => [304, 'okta.api.get.warning.unexpected-status', 'warning'],
+    'gone' => [410, 'okta.api.get.error.client-error', 'error'],
+    'bad gateway' => [502, 'okta.api.get.critical.server-error', 'critical'],
+]);
 
 it('reports a rejected SSWS token with SSWS guidance when the config uses OAuth', function () {
     config()->set('okta-api-client.client_id', '0oaTESTCLIENT');

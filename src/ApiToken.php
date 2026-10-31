@@ -82,14 +82,14 @@ class ApiToken
     /**
      * Create (or return a cached) Okta API access token for the requested scopes.
      *
-     * @param  string|null  $scope
-     *                                   A required space-delimited OAuth scope string (ex. 'okta.users.read' or
-     *                                   'okta.users.read okta.groups.read'). There is no config or environment default; a ScopeException
-     *                                   is thrown if it is empty. Nullable only so the caller can forward a missing value and receive that
-     *                                   exception rather than a type error.
-     * @param  array        $connection  (optional)
-     *                                   An array with `url`, `client_id`, `key_id`, either `private_key` or `private_key_path`, plus
-     *                                   optional `dpop`. If not set, the `config('okta-api-client')` array is used.
+     * @param  string|null           $scope
+     *                                            A required space-delimited OAuth scope string (ex. 'okta.users.read' or
+     *                                            'okta.users.read okta.groups.read'). There is no config or environment default; a ScopeException
+     *                                            is thrown if it is empty. Nullable only so the caller can forward a missing value and receive that
+     *                                            exception rather than a type error.
+     * @param  array<string, mixed>  $connection  (optional)
+     *                                            An array with `url`, `client_id`, `key_id`, either `private_key` or `private_key_path`, plus
+     *                                            optional `dpop`. If not set, the `config('okta-api-client')` array is used.
      *
      * @throws ConfigurationException
      * @throws ScopeException
@@ -233,6 +233,8 @@ class ApiToken
      */
     private static function cacheKey(array $validated_connection, string $scopes, bool $dpop): string
     {
+        // JSON_THROW_ON_ERROR so that an encoding failure (ex. invalid UTF-8) throws instead of hashing an empty string
+        // into one cache key that is shared by every connection that fails to encode.
         return 'okta-api-token-' . md5(json_encode([
             'url' => $validated_connection['url'],
             'client_id' => $validated_connection['client_id'],
@@ -243,7 +245,7 @@ class ApiToken
                     ? 'inline:' . md5((string) $validated_connection['private_key'])
                     : null),
             'dpop' => $dpop,
-        ]));
+        ], JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -284,6 +286,9 @@ class ApiToken
     /**
      * Validate that the required OAuth keys exist in the connection array.
      *
+     * @param  array<string, mixed>  $connection  See create(). An empty array uses `config('okta-api-client')`.
+     *
+     * @return array<string, mixed>
      *
      * @throws ConfigurationException
      */
@@ -371,6 +376,7 @@ class ApiToken
      * Precedence: an inline `private_key` is used when set, otherwise `private_key_path` is read from disk. This is
      * called only on a token cache miss.
      *
+     * @param  array<string, mixed>  $connection  The connection array from validateConnectionArray()
      *
      * @throws ConfigurationException
      */

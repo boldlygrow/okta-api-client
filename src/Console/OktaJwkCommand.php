@@ -45,7 +45,8 @@ class OktaJwkCommand extends Command
 
     public function handle(): int
     {
-        $kid = $this->option('kid') ?: null;
+        $kid = $this->option('kid');
+        $kid = is_string($kid) && $kid !== '' ? $kid : null;
 
         if ($this->option('generate')) {
             return $this->generateAndPrint($kid);
@@ -53,7 +54,7 @@ class OktaJwkCommand extends Command
 
         $path = $this->argument('path');
 
-        if (empty($path)) {
+        if (! is_string($path) || $path === '') {
             $this->error('Provide a path to an RSA public key PEM, or pass --generate to create a new key pair.');
 
             return self::INVALID;
@@ -84,10 +85,18 @@ class OktaJwkCommand extends Command
             return self::FAILURE;
         }
 
-        openssl_pkey_export($resource, $private_pem);
-        $public_pem = openssl_pkey_get_details($resource)['key'];
+        $details = openssl_pkey_get_details($resource);
 
-        $out = (string) $this->option('out');
+        if ($details === false || ! openssl_pkey_export($resource, $private_pem)) {
+            $this->error('Failed to export the generated RSA key pair.');
+
+            return self::FAILURE;
+        }
+
+        $public_pem = $details['key'];
+
+        $out = $this->option('out');
+        $out = is_string($out) ? $out : '';
 
         if (file_put_contents($out, $private_pem) === false) {
             $this->error('Could not write the private key to (' . $out . ').');

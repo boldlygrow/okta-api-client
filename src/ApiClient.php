@@ -32,6 +32,36 @@ use Illuminate\Support\Str;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
 
+/**
+ * ApiResponse is the object returned by get(), post(), patch(), put(), and delete(). See parseApiResponse() for an
+ * example. Static analysis in your application can use it with `@phpstan-import-type ApiResponse from ApiClient`.
+ *
+ * @phpstan-type ApiResponseStatus object{
+ *     code: int,
+ *     ok: bool,
+ *     successful: bool,
+ *     failed: bool,
+ *     serverError: bool,
+ *     clientError: bool,
+ * }
+ * @phpstan-type ApiResponseHeaders array<string, string|array<int, string>>
+ * @phpstan-type ApiResponse object{
+ *     data: mixed,
+ *     headers: ApiResponseHeaders,
+ *     status: ApiResponseStatus,
+ * }
+ * @phpstan-type ApiPaginatedResponse object{
+ *     paginated_results: array<mixed>,
+ *     headers: ApiResponseHeaders,
+ *     status: ApiResponseStatus,
+ * }
+ * @phpstan-type ApiErrorResponse object{
+ *     data: null,
+ *     headers: array{},
+ *     error: object{code: int, message: string, method: string, uri: string},
+ *     status: ApiResponseStatus,
+ * }
+ */
 class ApiClient
 {
     /**
@@ -45,12 +75,13 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/api/org/#get-org-settings
      *
-     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
-     *                                   `config('okta-api-client')` array will be used that uses the
-     *                                   OKTA_API_* variables from your .env file.
-     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string that grants access to the
-     *                                   `test_uri` endpoint (ex. `okta.orgs.read` for the default `org` endpoint). This is
-     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
+     * @param  array<string, mixed>  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                            `config('okta-api-client')` array will be used that uses the
+     *                                            OKTA_API_* variables from your .env file.
+     * @param  string|null           $scope       (optional) A space-delimited OAuth scope string that grants
+     *                                            access to the `test_uri` endpoint (ex. `okta.orgs.read` for the
+     *                                            default `org` endpoint). This is required when authenticating with
+     *                                            OAuth and ignored when using an SSWS token.
      *
      * @throws ConfigurationException
      */
@@ -77,7 +108,9 @@ class ApiClient
     /**
      * Validate connection config array
      *
-     * @param  array  $connection  An array with `url` and `token`.
+     * @param  array<string, mixed>  $connection  An array with `url` and `token`.
+     *
+     * @return array<string, mixed>
      */
     private static function validateConnection(array $connection): array
     {
@@ -128,16 +161,17 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string       $uri         The URI with or without leading slash after `/api/v1/`
-     * @param  array        $data        (optional) Query data to apply to GET request
-     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
-     *                                   `config('okta-api-client')` array will be used that uses the
-     *                                   OKTA_API_* variables from your .env file.
-     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
-     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
+     * @param  string                $uri         The URI with or without leading slash after `/api/v1/`
+     * @param  array<mixed>          $data        (optional) Query data to apply to GET request
+     * @param  array<string, mixed>  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                            `config('okta-api-client')` array will be used that uses the
+     *                                            OKTA_API_* variables from your .env file.
+     * @param  string|null           $scope       (optional) A space-delimited OAuth scope string
+     *                                            (ex. `okta.users.read`). This is required when authenticating with
+     *                                            OAuth and ignored when using an SSWS token.
      *
-     * @return object See parseApiResponse() method. The content and schema of the data array can
-     *                be found in the API documentation for the endpoint.
+     * @return ApiResponse See parseApiResponse() method. The content and schema of the data array can
+     *                     be found in the API documentation for the endpoint.
      */
     public static function get(
         string $uri,
@@ -178,8 +212,10 @@ class ApiClient
             connection: $connection
         );
 
-        // If the response is a paginated response
-        if (self::checkForPagination($response->headers) == true) {
+        // If the response is a paginated response, the `link` header has the URL of the next page
+        $paginated_url = self::generateNextPaginatedResultUrl($response->headers);
+
+        if ($paginated_url !== null) {
             AuditLog::create(
                 event_type: 'okta.api.get.process.pagination.started',
                 level: 'debug',
@@ -192,19 +228,18 @@ class ApiClient
                 transaction: false
             );
 
-            // Get paginated URL and use getPaginatedResults to loop through all paginated requests
-            $response->paginated_results = self::getPaginatedResults(
-                connection: $connection,
-                paginated_url: self::generateNextPaginatedResultUrl($response->headers),
-                records: $response->data,
-                scope: $scope
-            );
-
-            // Unset property for original request body
-            unset($response->body);
-
-            // Parse API Response and convert to returnable object with expected format
-            $response = self::parseApiResponse($response);
+            // Use getPaginatedResults to loop through all paginated requests, then parse the combined records and
+            // convert to returnable object with expected format
+            $response = self::parseApiResponse((object) [
+                'paginated_results' => self::getPaginatedResults(
+                    connection: $connection,
+                    paginated_url: $paginated_url,
+                    records: $response->data,
+                    scope: $scope
+                ),
+                'headers' => $response->headers,
+                'status' => $response->status,
+            ]);
 
             $count_records = is_countable($response->data) ? count($response->data) : null;
             $duration_ms_per_record = $count_records ? (int) ($event_ms->diffInMilliseconds() / $count_records) : null;
@@ -247,16 +282,17 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string       $uri         The URI without leading slash after `/api/v1/`
-     * @param  array        $data        (optional) Post Body array
-     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
-     *                                   `config('okta-api-client')` array will be used that uses the
-     *                                   OKTA_API_* variables from your .env file.
-     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
-     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
+     * @param  string                $uri         The URI without leading slash after `/api/v1/`
+     * @param  array<mixed>          $data        (optional) Post Body array
+     * @param  array<string, mixed>  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                            `config('okta-api-client')` array will be used that uses the
+     *                                            OKTA_API_* variables from your .env file.
+     * @param  string|null           $scope       (optional) A space-delimited OAuth scope string
+     *                                            (ex. `okta.users.read`). This is required when authenticating with
+     *                                            OAuth and ignored when using an SSWS token.
      *
-     * @return object See parseApiResponse() method. The content and schema of the data array can
-     *                be found in the API documentation for the endpoint.
+     * @return ApiResponse See parseApiResponse() method. The content and schema of the data array can
+     *                     be found in the API documentation for the endpoint.
      */
     public static function post(
         string $uri,
@@ -328,16 +364,17 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string       $uri         The URI without leading slash after `/api/v1/`
-     * @param  array        $data        (optional) Optional request data to send with PUT request
-     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
-     *                                   `config('okta-api-client')` array will be used that uses the
-     *                                   OKTA_API_* variables from your .env file.
-     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
-     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
+     * @param  string                $uri         The URI without leading slash after `/api/v1/`
+     * @param  array<mixed>          $data        (optional) Optional request data to send with PUT request
+     * @param  array<string, mixed>  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                            `config('okta-api-client')` array will be used that uses the
+     *                                            OKTA_API_* variables from your .env file.
+     * @param  string|null           $scope       (optional) A space-delimited OAuth scope string
+     *                                            (ex. `okta.users.read`). This is required when authenticating with
+     *                                            OAuth and ignored when using an SSWS token.
      *
-     * @return object See parseApiResponse() method. The content and schema of the data array can
-     *                be found in the API documentation for the endpoint.
+     * @return ApiResponse See parseApiResponse() method. The content and schema of the data array can
+     *                     be found in the API documentation for the endpoint.
      */
     public static function patch(
         string $uri,
@@ -400,16 +437,17 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string       $uri         The URI without leading slash after `/api/v1/`
-     * @param  array        $data        (optional) Optional request data to send with PUT request
-     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
-     *                                   `config('okta-api-client')` array will be used that uses the
-     *                                   OKTA_API_* variables from your .env file.
-     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
-     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
+     * @param  string                $uri         The URI without leading slash after `/api/v1/`
+     * @param  array<mixed>          $data        (optional) Optional request data to send with PUT request
+     * @param  array<string, mixed>  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                            `config('okta-api-client')` array will be used that uses the
+     *                                            OKTA_API_* variables from your .env file.
+     * @param  string|null           $scope       (optional) A space-delimited OAuth scope string
+     *                                            (ex. `okta.users.read`). This is required when authenticating with
+     *                                            OAuth and ignored when using an SSWS token.
      *
-     * @return object See parseApiResponse() method. The content and schema of the data array can
-     *                be found in the API documentation for the endpoint.
+     * @return ApiResponse See parseApiResponse() method. The content and schema of the data array can
+     *                     be found in the API documentation for the endpoint.
      */
     public static function put(
         string $uri,
@@ -467,16 +505,17 @@ class ApiClient
      * );
      * ```
      *
-     * @param  string       $uri         The URI without leading slash after `/api/v1/`
-     * @param  array        $data        Optional request data to send with DELETE request
-     * @param  array        $connection  (optional) An array with `url` and `token`. If not set, the
-     *                                   `config('okta-api-client')` array will be used that uses the
-     *                                   OKTA_API_* variables from your .env file.
-     * @param  string|null  $scope       (optional) A space-delimited OAuth scope string (ex. `okta.users.read`). This is
-     *                                   required when authenticating with OAuth and ignored when using an SSWS token.
+     * @param  string                $uri         The URI without leading slash after `/api/v1/`
+     * @param  array<mixed>          $data        Optional request data to send with DELETE request
+     * @param  array<string, mixed>  $connection  (optional) An array with `url` and `token`. If not set, the
+     *                                            `config('okta-api-client')` array will be used that uses the
+     *                                            OKTA_API_* variables from your .env file.
+     * @param  string|null           $scope       (optional) A space-delimited OAuth scope string
+     *                                            (ex. `okta.users.read`). This is required when authenticating with
+     *                                            OAuth and ignored when using an SSWS token.
      *
-     * @return object See parseApiResponse() method. The content and schema of the data array can
-     *                be found in the API documentation for the endpoint.
+     * @return ApiResponse See parseApiResponse() method. The content and schema of the data array can
+     *                     be found in the API documentation for the endpoint.
      */
     public static function delete(
         string $uri,
@@ -549,7 +588,9 @@ class ApiClient
             ->retry(
                 times: 2,
                 sleepMilliseconds: 0,
-                when: function (Throwable $exception, PendingRequest $request) use ($connection, $scope, $http_method, $url): bool {
+                // Laravel passes null instead of an exception for an unsuccessful response that is not a 4xx or 5xx
+                // (ex. a 304), since Response::toException() only returns an exception for a failed response.
+                when: function (?Throwable $exception, PendingRequest $request) use ($connection, $scope, $http_method, $url): bool {
                     $dpop_nonce = $exception instanceof RequestException
                         ? DpopProof::nonceChallenge($exception->response)
                         : null;
@@ -592,11 +633,14 @@ class ApiClient
     /**
      * Set the request headers for the Okta API request
      *
-     * @param  array        $connection   An array with `url` and either `token` or `client_id` and private key.
-     * @param  string|null  $scope        The OAuth scope string. Required for OAuth, ignored for SSWS tokens.
-     * @param  string       $http_method  The HTTP method that will be sent, used for the DPoP proof
-     * @param  string       $url          The full request URL, used for the DPoP proof
-     * @param  string|null  $dpop_nonce   (optional) The `DPoP-Nonce` value from a `use_dpop_nonce` challenge
+     * @param  array<string, mixed>  $connection   An array with `url` and either `token` or `client_id` and
+     *                                             private key.
+     * @param  string|null           $scope        The OAuth scope string. Required for OAuth, ignored for SSWS tokens.
+     * @param  string                $http_method  The HTTP method that will be sent, used for the DPoP proof
+     * @param  string                $url          The full request URL, used for the DPoP proof
+     * @param  string|null           $dpop_nonce   (optional) The `DPoP-Nonce` value from a `use_dpop_nonce` challenge
+     *
+     * @return array<string, string>
      */
     private static function getRequestHeaders(
         array $connection,
@@ -638,50 +682,50 @@ class ApiClient
      * nested array for each value, and converts the single array values into strings and converts to an object for
      * easier and consistent accessibility with the parseApiResponse format.
      *
-     * @param  array  $header_response
-     *                                  [
-     *                                  "Date" => array:1 [
-     *                                  0 => "Sun, 30 Jan 2022 01:18:14 GMT"
-     *                                  ]
-     *                                  "Content-Type" => array:1 [
-     *                                  0 => "application/json"
-     *                                  ]
-     *                                  "Transfer-Encoding" => array:1 [
-     *                                  0 => "chunked"
-     *                                  ]
-     *                                  "Connection" => array:1 [
-     *                                  0 => "keep-alive"
-     *                                  ]
-     *                                  "Server" => array:1 [
-     *                                  0 => "nginx"
-     *                                  ]
-     *                                  // ...
-     *                                  ]
+     * @param  ApiResponseHeaders  $header_response
+     *                                               [
+     *                                               "Date" => array:1 [
+     *                                               0 => "Sun, 30 Jan 2022 01:18:14 GMT"
+     *                                               ]
+     *                                               "Content-Type" => array:1 [
+     *                                               0 => "application/json"
+     *                                               ]
+     *                                               "Transfer-Encoding" => array:1 [
+     *                                               0 => "chunked"
+     *                                               ]
+     *                                               "Connection" => array:1 [
+     *                                               0 => "keep-alive"
+     *                                               ]
+     *                                               "Server" => array:1 [
+     *                                               0 => "nginx"
+     *                                               ]
+     *                                               // ...
+     *                                               ]
      *
-     * @return array
-     *               [
-     *               "Date" => "Sun, 30 Jan 2022 01:11:44 GMT",
-     *               "Content-Type" => "application/json",
-     *               "Transfer-Encoding" => "chunked",
-     *               "Connection" => "keep-alive",
-     *               "Server" => "nginx",
-     *               "Public-Key-Pins-Report-Only" => (truncated),
-     *               "Vary" => "Accept-Encoding",
-     *               "x-okta-request-id" => "A1b2C3D4e5@f6G7H8I9j0k1L2M3",
-     *               "x-xss-protection" => "0",
-     *               "p3p" => "CP="HONK"",
-     *               "x-rate-limit-limit" => "1000",
-     *               "x-rate-limit-remaining" => "998",
-     *               "x-rate-limit-reset" => "1643505155",
-     *               "cache-control" => "no-cache, no-store",
-     *               "pragma" => "no-cache",
-     *               "expires" => "0",
-     *               "content-security-policy" => (truncated),
-     *               "expect-ct" => "report-uri="https://oktaexpectct.report-uri.com/r/t/ct/reportOnly", max-age=0",
-     *               "x-content-type-options" => "nosniff",
-     *               "Strict-Transport-Security" => "max-age=315360000; includeSubDomains",
-     *               "set-cookie" => (truncated)
-     *               ]
+     * @return ApiResponseHeaders
+     *                            [
+     *                            "Date" => "Sun, 30 Jan 2022 01:11:44 GMT",
+     *                            "Content-Type" => "application/json",
+     *                            "Transfer-Encoding" => "chunked",
+     *                            "Connection" => "keep-alive",
+     *                            "Server" => "nginx",
+     *                            "Public-Key-Pins-Report-Only" => (truncated),
+     *                            "Vary" => "Accept-Encoding",
+     *                            "x-okta-request-id" => "A1b2C3D4e5@f6G7H8I9j0k1L2M3",
+     *                            "x-xss-protection" => "0",
+     *                            "p3p" => "CP="HONK"",
+     *                            "x-rate-limit-limit" => "1000",
+     *                            "x-rate-limit-remaining" => "998",
+     *                            "x-rate-limit-reset" => "1643505155",
+     *                            "cache-control" => "no-cache, no-store",
+     *                            "pragma" => "no-cache",
+     *                            "expires" => "0",
+     *                            "content-security-policy" => (truncated),
+     *                            "expect-ct" => (truncated),
+     *                            "x-content-type-options" => "nosniff",
+     *                            "Strict-Transport-Security" => "max-age=315360000; includeSubDomains",
+     *                            "set-cookie" => (truncated)
+     *                            ]
      */
     private static function convertHeadersToArray(array $header_response): array
     {
@@ -700,7 +744,7 @@ class ApiClient
      * If a 'link' header exists, then there is another page to loop
      * <https://mycompany.okta.com/api/v1/apps?after=0oa1ab2c3D4E5F6G7h8i&limit=50>; rel="next"
      *
-     * @param  array  $headers  API response headers from Okta request or parsed response.
+     * @param  ApiResponseHeaders  $headers  API response headers from Okta request or parsed response.
      *
      * @return bool True if the response requires multiple pages, false if response is a single page
      */
@@ -725,19 +769,19 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/core-okta-api/#pagination
      *
-     * @param  array  $headers  API response headers from Okta request or parsed response.
+     * @param  ApiResponseHeaders  $headers  API response headers from Okta request or parsed response.
      *
      * @return ?string URL string or null if not found
      */
     private static function generateNextPaginatedResultUrl(array $headers): ?string
     {
-        if (array_key_exists('link', $headers)) {
-            foreach ($headers['link'] as $link_key => $link_url) {
+        if (array_key_exists('link', $headers) && is_array($headers['link'])) {
+            foreach ($headers['link'] as $link_url) {
                 if (Str::contains($link_url, 'next')) {
                     // Remove the '<' and '>; rel="next"' that is around the next api_url
                     // Before: <https://mycompany.okta.com/api/v1/apps?after=0oa1ab2c3D4E5F6G7h8i&limit=50>; rel="next"
                     // After: https://mycompany.okta.com/api/v1/apps?after=0oa1ab2c3D4E5F6G7h8i&limit=50
-                    $url = Str::remove('<', $headers['link'][$link_key]);
+                    $url = Str::remove('<', $link_url);
                     $url = Str::remove('>; rel="next"', $url);
 
                     return $url;
@@ -753,12 +797,14 @@ class ApiClient
      *
      * @link https://developer.okta.com/docs/reference/core-okta-api/#pagination
      *
-     * @param  array        $connection     An array with `url` and `token`.
-     * @param  string       $paginated_url  The paginated URL generated in the get() method
-     * @param  array        $records        An array of records from the first page to append to paginated results
-     * @param  string|null  $scope          (optional) The OAuth scope string from the originating get() request
+     * @param  array<string, mixed>  $connection     An array with `url` and `token`.
+     * @param  string                $paginated_url  The paginated URL generated in the get() method
+     * @param  array<mixed>          $records        An array of records from the first page to append to
+     *                                               paginated results
+     * @param  string|null           $scope          (optional) The OAuth scope string from the originating
+     *                                               get() request
      *
-     * @return array An array of the response objects for each page combined.
+     * @return array<mixed> An array of the response objects for each page combined.
      */
     private static function getPaginatedResults(
         array $connection,
@@ -804,35 +850,36 @@ class ApiClient
      *
      * @link https://laravel.com/docs/10.x/http-client#making-requests
      *
-     * @param  object  $response  Response object from API results
+     * @param  Response|ApiPaginatedResponse  $response  Response object from API results, or the combined pages
+     *                                                   from get()
      *
-     * @return object
-     *                {
-     *                +"data": {
-     *                +"id": 12345678
-     *                +"name": "Dade Murphy"
-     *                +"username": "z3r0c00l"
-     *                +"state": "active"
-     *                },
-     *                +"headers": [
-     *                "Date" => "Fri, 12 Nov 2021 20:13:55 GMT",
-     *                "Content-Type" => "application/json",
-     *                "Content-Length" => "1623",
-     *                "Connection" => "keep-alive"
-     *                ],
-     *                +"status": {
-     *                +"code": 200
-     *                +"ok": true
-     *                +"successful": true
-     *                +"failed": false
-     *                +"serverError": false
-     *                +"clientError": false
-     *                }
-     *                }
+     * @return ApiResponse
+     *                     {
+     *                     +"data": {
+     *                     +"id": 12345678
+     *                     +"name": "Dade Murphy"
+     *                     +"username": "z3r0c00l"
+     *                     +"state": "active"
+     *                     },
+     *                     +"headers": [
+     *                     "Date" => "Fri, 12 Nov 2021 20:13:55 GMT",
+     *                     "Content-Type" => "application/json",
+     *                     "Content-Length" => "1623",
+     *                     "Connection" => "keep-alive"
+     *                     ],
+     *                     +"status": {
+     *                     +"code": 200
+     *                     +"ok": true
+     *                     +"successful": true
+     *                     +"failed": false
+     *                     +"serverError": false
+     *                     +"clientError": false
+     *                     }
+     *                     }
      */
     public static function parseApiResponse(object $response): object
     {
-        if (property_exists($response, 'paginated_results')) {
+        if (! $response instanceof Response) {
             return (object) [
                 'data' => (object) $response->paginated_results,
                 'headers' => self::convertHeadersToArray($response->headers),
@@ -875,7 +922,7 @@ class ApiClient
      *
      * @see https://developer.okta.com/docs/reference/error-codes/
      *
-     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
+     * @param  ApiResponse  $response  The HTTP response formatted with $this->parseApiResponse()
      *
      * @return ?string The reason for the error or null if the response body and WWW-Authenticate header are empty
      *                 Ex. `E0000007 Not found: Resource not found: xyz (User)`
@@ -989,22 +1036,24 @@ class ApiClient
      *                                       Ex. __METHOD__
      * @param  string            $uri        HTTP Request URI
      *
-     * @return object
-     *                {
-     *                +"error": {
-     *                +"code": "<string>"
-     *                +"message": "<string>"
-     *                +"method": "<string>"
-     *                +"uri": "<string>"
-     *                }
-     *                +"status": {
-     *                +"code": 400
-     *                +"ok": false
-     *                +"successful": false
-     *                +"failed": true
-     *                +"serverError": false
-     *                +"clientError": true
-     *                }
+     * @return ApiErrorResponse
+     *                          {
+     *                          +"data": null
+     *                          +"headers": []
+     *                          +"error": {
+     *                          +"code": "<string>"
+     *                          +"message": "<string>"
+     *                          +"method": "<string>"
+     *                          +"uri": "<string>"
+     *                          }
+     *                          +"status": {
+     *                          +"code": 400
+     *                          +"ok": false
+     *                          +"successful": false
+     *                          +"failed": true
+     *                          +"serverError": false
+     *                          +"clientError": true
+     *                          }
      */
     public static function handleException(
         RequestException $exception,
@@ -1027,7 +1076,11 @@ class ApiClient
             transaction: true
         );
 
+        // The empty data and headers keep the same properties as an ApiResponse from parseApiResponse(), since this is
+        // returned by the same methods.
         return (object) [
+            'data' => null,
+            'headers' => [],
             'error' => (object) [
                 'code' => $exception->getCode(),
                 'message' => $exception->getMessage(),
@@ -1050,11 +1103,11 @@ class ApiClient
      *
      * This method is called from other methods and create log entry and throw exception
      *
-     * @param  string  $method    The upstream method that invoked this method for traceability
-     *                            Ex. __METHOD__
-     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
-     * @param  object  $response  The raw unformatted HTTP client response
-     * @param  Carbon  $event_ms  A process start timestamp used to calculate duration in ms for logs
+     * @param  string       $method    The upstream method that invoked this method for traceability
+     *                                 Ex. __METHOD__
+     * @param  string       $url       The URL of the API call including the concatenated base URL and URI
+     * @param  ApiResponse  $response  The HTTP response formatted with $this->parseApiResponse()
+     * @param  Carbon       $event_ms  A process start timestamp used to calculate duration in ms for logs
      */
     private static function logResponse(
         string $method,
@@ -1062,7 +1115,7 @@ class ApiClient
         object $response,
         ?Carbon $event_ms = null
     ): void {
-        $log_type = [
+        $log_types = [
             200 => ['event_type' => 'success', 'level' => 'debug'],
             201 => ['event_type' => 'success', 'level' => 'debug'],
             202 => ['event_type' => 'success', 'level' => 'debug'],
@@ -1072,6 +1125,7 @@ class ApiClient
             403 => ['event_type' => 'error.forbidden', 'level' => 'error'],
             404 => ['event_type' => 'warning.not-found', 'level' => 'warning'],
             405 => ['event_type' => 'error.method-not-allowed', 'level' => 'error'],
+            409 => ['event_type' => 'error.conflict', 'level' => 'error'],
             412 => ['event_type' => 'error.precondition-failed', 'level' => 'error'],
             422 => ['event_type' => 'error.unprocessable', 'level' => 'error'],
             429 => ['event_type' => 'critical.rate-limit', 'level' => 'critical'],
@@ -1079,6 +1133,15 @@ class ApiClient
             501 => ['event_type' => 'error.not-implemented', 'level' => 'error'],
             503 => ['event_type' => 'critical.server-unavailable', 'level' => 'critical'],
         ];
+
+        // A status code that is not listed above (ex. a 502 or 504 from a gateway) is logged with the event type for
+        // its range instead of failing with an undefined array key before throwExceptionIfEnabled() is reached.
+        $log_type = $log_types[$response->status->code] ?? match (true) {
+            $response->status->successful => ['event_type' => 'success', 'level' => 'debug'],
+            $response->status->clientError => ['event_type' => 'error.client-error', 'level' => 'error'],
+            $response->status->serverError => ['event_type' => 'critical.server-error', 'level' => 'critical'],
+            default => ['event_type' => 'warning.unexpected-status', 'level' => 'warning'],
+        };
 
         $errors = [];
         if (isset($response->data->errorCode)) {
@@ -1118,9 +1181,9 @@ class ApiClient
                 'okta',
                 'api',
                 explode('::', $method)[1],
-                $log_type[$response->status->code]['event_type'],
+                $log_type['event_type'],
             ]),
-            level: $log_type[$response->status->code]['level'],
+            level: $log_type['level'],
             message: $message,
             metadata: [
                 'okta_request_id' => $response->headers['x-okta-request-id'] ?? null,
@@ -1144,7 +1207,7 @@ class ApiClient
      *
      * @param  string                $method      The lowercase name of the method that calls this function (ex. `get`)
      * @param  string                $url         The URL of the API call including the concatenated base URL and URI
-     * @param  object                $response    The HTTP response formatted with $this->parseApiResponse()
+     * @param  ApiResponse           $response    The HTTP response formatted with $this->parseApiResponse()
      * @param  array<string, mixed>  $connection  (optional) The validated connection array used for the request,
      *                                            which determines the OAuth or SSWS wording of a 401 error. If not
      *                                            set, the `config('okta-api-client')` array is used.
@@ -1226,6 +1289,16 @@ class ApiClient
                     throw new ServerErrorException($message);
                 case 503:
                     throw new ServiceUnavailableException($message);
+                default:
+                    // A status code without its own exception (ex. a 410, 501, or 502) is treated as the x00 status
+                    // code of its range, as RFC 9110 15 requires for an unrecognized status code, so that every 4xx
+                    // and 5xx response throws an exception.
+                    if ($response->status->clientError) {
+                        throw new BadRequestException($message);
+                    }
+                    if ($response->status->serverError) {
+                        throw new ServerErrorException($message);
+                    }
             }
         }
     }
@@ -1234,10 +1307,10 @@ class ApiClient
      * Create a warning log entry and delay the API request by 10 seconds
      * if the rate limit remaining is less than 20 percent
      *
-     * @param  string  $method    The upstream method that invoked this method for traceability
-     *                            Ex. __METHOD__
-     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
-     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
+     * @param  string       $method    The upstream method that invoked this method for traceability
+     *                                 Ex. __METHOD__
+     * @param  string       $url       The URL of the API call including the concatenated base URL and URI
+     * @param  ApiResponse  $response  The HTTP response formatted with $this->parseApiResponse()
      */
     private static function checkIfRateLimitApproaching(
         string $method,
@@ -1277,10 +1350,10 @@ class ApiClient
      * Create an error log entry for an API call if the rate limit remaining is equal to zero (0) or one (1),
      * indicating that this is the last request that will be successful.
      *
-     * @param  string  $method    The upstream method that invoked this method for traceability
-     *                            Ex. __METHOD__
-     * @param  string  $url       The URL of the API call including the concatenated base URL and URI
-     * @param  object  $response  The HTTP response formatted with $this->parseApiResponse()
+     * @param  string       $method    The upstream method that invoked this method for traceability
+     *                                 Ex. __METHOD__
+     * @param  string       $url       The URL of the API call including the concatenated base URL and URI
+     * @param  ApiResponse  $response  The HTTP response formatted with $this->parseApiResponse()
      */
     private static function checkIfRateLimitExceeded(
         string $method,
