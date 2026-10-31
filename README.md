@@ -121,7 +121,7 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) to learn more about how to contrib
 | PHP         | `^8.2`                      |
 | Laravel     | `^11.0`, `^12.0`, `^13.0`   |
 
-OAuth 2.0 authentication requires no additional Composer packages; the JWT client assertion is signed with the `openssl` extension. This package does not integrate with any secrets manager, so there is no cloud SDK dependency. Fetching the signing key from a secrets manager, if you use one, is done in your own application code (see [Private Key Storage](#private-key-storage)).
+OAuth 2.0 authentication requires no additional Composer packages; the JWT client assertion is signed with the `openssl` extension. This package does not integrate with any secrets manager, so there is no cloud SDK dependency. If you use a secrets manager, your platform or your own application code loads the signing key from it (see [Private Key Storage](#private-key-storage)).
 
 ### Upgrade Guide
 
@@ -233,7 +233,7 @@ OKTA_API_PRIVATE_KEY_PATH="~/.okta/okta-private-key.pem"
 OKTA_API_DPOP=true
 ```
 
-A file path works well for local development. In production, store the private key in a secrets manager and pass it to the client at runtime (see [Private Key Storage](#private-key-storage)).
+A file path works well for local development. In production, store the private key in a secrets manager and load it at runtime (see [Private Key Storage](#private-key-storage)).
 
 #### Step 6: Make a Request
 
@@ -274,7 +274,7 @@ Okta revokes a token after 30 days without API calls. To move to OAuth 2.0 later
 
 ### Environment Variables
 
-The client reads these variables from your `.env` file through the `config/okta-api-client.php` configuration. If you store connection details in a database or secrets manager, you can pass a [connection array](#connection-arrays) on each request instead.
+The client reads these variables from your environment or `.env` file through the `config/okta-api-client.php` configuration. If you use a secrets manager, have your platform load the client ID and private key into these variables at runtime (see [Load Secrets Into Environment Variables](#load-secrets-into-environment-variables)). If the credentials vary per tenant or are stored in your database, pass a [connection array](#connection-arrays) on each request.
 
 | Variable | Method | Description |
 |----------|--------|-------------|
@@ -309,7 +309,7 @@ OKTA_API_URL="https://dev-12345678.okta.com"
 
 The variables that you define in your `.env` file are used by default unless you set the connection argument with an array. A connection array contains the `url` and either an OAuth `client_id` (with the key ID and key location fields) or a legacy `token`.
 
-> **Security Warning:** Do not commit a hard coded API token or private key into your code base. This should only be used with dynamic variables that are stored in your database or secrets manager.
+> **Security Warning:** Do not commit a hard coded API token or private key into your code base. Only use connection arrays with values that you load at runtime, such as per-tenant credentials from your database or secrets manager.
 
 OAuth 2.0 connection array:
 
@@ -336,7 +336,7 @@ $connection = [
 ];
 ```
 
-Passing a connection array per request is the recommended pattern for multi-tenant applications, where each tenant has its own `client_id` and key. The OAuth token cache is keyed per connection and scope set, so tenants never share a token.
+Passing a connection array per request is the recommended pattern for multi-tenant applications, where each tenant has its own `client_id` and key. The OAuth token cache is keyed per connection and scope set, so tenants never share a token. If the whole application uses one service app, load its secrets into [environment variables](#load-secrets-into-environment-variables) instead.
 
 ```php
 use BoldlyGrow\Okta\ApiClient;
@@ -373,9 +373,9 @@ Do not reuse an OAuth app or API token created for another purpose. Create a ded
 
 #### Credential Storage
 
-Do not add your API token or private key to any `config/*.php` files that are committed to your repository (secret leak).
+Do not hard code your API token or private key in any `config/*.php` files that are committed to your repository (secret leak).
 
-In production, store the private key in a secrets manager or vault and resolve it at runtime rather than committing it or baking it into an image. This package does not fetch the key for you; retrieve it in your own code and pass it as `private_key` in the connection array, or point `private_key_path` at a mounted secret file. For local development, keep the key file outside the repository. All `.env` values should remain in the `.gitignore`-excluded `.env` file.
+In production, store the private key in a secrets manager or vault and resolve it at runtime rather than committing it or baking it into an image. This package does not fetch the key for you. Have your platform load it into `OKTA_API_PRIVATE_KEY` at runtime, or mount it as a file for `OKTA_API_PRIVATE_KEY_PATH` (see [Private Key Storage](#private-key-storage)). For local development, keep the key file outside the repository. All `.env` values should remain in the `.gitignore`-excluded `.env` file.
 
 #### Rotation
 
@@ -1713,7 +1713,7 @@ echo json_encode($jwk, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
 `openssl_pkey_new()` returns `false` if the `openssl` extension can't generate a key, so check the result in production code.
 
-Store `$private_key_pem` in your secrets manager and pass it as `private_key` in the connection array (see [Private Key Storage](#private-key-storage)). For local development, you can write it to a file outside your repository instead:
+Store `$private_key_pem` in your secrets manager and load it at runtime (see [Private Key Storage](#private-key-storage)). For local development, you can write it to a file outside your repository instead:
 
 ```php
 use Illuminate\Support\Facades\File;
@@ -1771,9 +1771,175 @@ The private key is provided in one of two ways. This package does not integrate 
 
 Provide one or the other. `private_key` takes precedence when both are set.
 
-#### Resolve the Key From a Secrets Manager (Connection Array)
+There are three ways to load the client ID and private key from a secrets manager:
 
-Fetch the PEM from wherever you store it and pass it as `private_key` in a per-request connection array. This is the recommended pattern for multi-tenant applications, since each tenant can supply its own key. The example below uses Google Secret Manager, but any source works.
+| Approach | Use when |
+|----------|----------|
+| [Environment variables](#load-secrets-into-environment-variables) | Recommended. Your platform loads the secrets into environment variables when the container or VM starts. |
+| [Published config file](#load-secrets-in-the-published-config) | Your platform can't set environment variables from a secrets manager. The secrets are fetched for the whole application. |
+| [Connection array](#load-secrets-in-a-connection-array) | The credentials vary per tenant or change at runtime. |
+
+#### Load Secrets Into Environment Variables
+
+Most applications run in a container or on a VM, where the platform can load secrets manager values into environment variables at runtime. The client reads `OKTA_API_CLIENT_ID` and `OKTA_API_PRIVATE_KEY` like any other environment variable, so no code is needed. The PEM can contain real line breaks or escaped `\n` characters.
+
+Environment variables are set when the container or VM starts. After you rotate a secret, restart or redeploy the application to load the new value, and run `php artisan config:cache` again if you cache your config.
+
+##### Amazon ECS With Parameter Store
+
+Store the client ID as a `String` and the private key as a `SecureString`:
+
+```plain
+aws ssm put-parameter --name /okta/mycompany/client-id --type String --value 0oaExampleClientId
+aws ssm put-parameter --name /okta/mycompany/private-key --type SecureString --value file://okta-private-key.pem
+```
+
+Reference the parameters in the `secrets` of your container definition. If the parameters are in a different Region than the task, use their full ARNs. The task execution role needs `ssm:GetParameters` on both parameters, and `kms:Decrypt` if the `SecureString` uses a customer managed KMS key.
+
+```json
+"secrets": [
+    { "name": "OKTA_API_CLIENT_ID", "valueFrom": "/okta/mycompany/client-id" },
+    { "name": "OKTA_API_PRIVATE_KEY", "valueFrom": "/okta/mycompany/private-key" }
+]
+```
+
+##### Cloud Run With Secret Manager
+
+Store the client ID and private key as two secrets:
+
+```plain
+printf '0oaExampleClientId' | gcloud secrets create okta-client-id --data-file=-
+gcloud secrets create okta-private-key --data-file=okta-private-key.pem
+```
+
+Map the secrets to environment variables when you deploy. The service's service account needs the Secret Manager Secret Accessor role (`roles/secretmanager.secretAccessor`) on both secrets.
+
+```plain
+gcloud run deploy my-service --image IMAGE \
+    --set-secrets=OKTA_API_CLIENT_ID=okta-client-id:latest,OKTA_API_PRIVATE_KEY=okta-private-key:latest
+```
+
+##### Other Platforms
+
+Kubernetes, other container platforms, and VM startup scripts can set the same variables from a secrets manager. If your platform mounts secrets as files instead, set `OKTA_API_PRIVATE_KEY_PATH` to the mounted file (ex. `/var/secrets/okta/private-key.pem`).
+
+#### Load Secrets in the Published Config
+
+If your platform can't load secrets into environment variables, fetch them for the whole application in the published config file. Every `ApiClient` call then uses `config('okta-api-client.client_id')` and `config('okta-api-client.private_key')` by default.
+
+```plain
+php artisan vendor:publish --tag=okta-api-client
+```
+
+The examples below use the same Parameter Store parameters and Secret Manager secrets as [Load Secrets Into Environment Variables](#load-secrets-into-environment-variables). They show one way to approach it and aren't part of this package. This package doesn't depend on either SDK, so install the one you use in your application (`aws/aws-sdk-php` or `google/cloud-secret-manager`).
+
+Config files run wherever your application boots, including Composer's `package:discover` script and CI. So each example only calls the secrets manager when its environment variable is set, and otherwise falls back to the `.env` values. These variables belong to your application, and this package doesn't read them.
+
+##### AWS Systems Manager Parameter Store
+
+Fetch the parameters at the top of `config/okta-api-client.php`, and use the variables for the `client_id` and `private_key` keys. Keep the rest of the published file as it is.
+
+```php
+<?php
+
+use Aws\Ssm\SsmClient;
+
+$client_id = env('OKTA_API_CLIENT_ID');
+$private_key = env('OKTA_API_PRIVATE_KEY');
+
+// Fetch from Parameter Store when a prefix is set (ex. OKTA_SSM_PREFIX=/okta/mycompany)
+if ($prefix = env('OKTA_SSM_PREFIX')) {
+    $ssm = new SsmClient([
+        'region' => env('AWS_DEFAULT_REGION'),
+        'version' => 'latest',
+    ]);
+
+    $result = $ssm->getParameters([
+        'Names' => ["{$prefix}/client-id", "{$prefix}/private-key"],
+        'WithDecryption' => true,
+    ]);
+
+    if (! empty($result['InvalidParameters'])) {
+        throw new RuntimeException('Okta SSM parameters not found: ' . implode(', ', $result['InvalidParameters']));
+    }
+
+    $parameters = array_column($result['Parameters'], 'Value', 'Name');
+    $client_id = $parameters["{$prefix}/client-id"];
+    $private_key = $parameters["{$prefix}/private-key"];
+}
+
+return [
+    // ...
+
+    'client_id' => $client_id,
+
+    // ...
+
+    'private_key' => $private_key,
+    'private_key_path' => env('OKTA_API_PRIVATE_KEY_PATH'),
+
+    // ...
+];
+```
+
+The SDK uses the default AWS credential chain, such as the IAM role of an EC2 instance, ECS task, or Lambda function. The role needs `ssm:GetParameters` on both parameters, and `kms:Decrypt` if the `SecureString` uses a customer managed KMS key.
+
+##### Google Secret Manager
+
+Fetch the secrets at the top of `config/okta-api-client.php`, and use the variables for the `client_id` and `private_key` keys. Keep the rest of the published file as it is.
+
+```php
+<?php
+
+use Google\Cloud\SecretManager\V1\AccessSecretVersionRequest;
+use Google\Cloud\SecretManager\V1\Client\SecretManagerServiceClient;
+
+$client_id = env('OKTA_API_CLIENT_ID');
+$private_key = env('OKTA_API_PRIVATE_KEY');
+
+// Fetch from Secret Manager when a project is set (ex. OKTA_GCP_PROJECT=my-gcp-project)
+if ($project = env('OKTA_GCP_PROJECT')) {
+    $secrets = new SecretManagerServiceClient();
+
+    $access = fn (string $secret): string => $secrets->accessSecretVersion(
+        (new AccessSecretVersionRequest())->setName(
+            SecretManagerServiceClient::secretVersionName($project, $secret, 'latest')
+        )
+    )->getPayload()->getData();
+
+    $client_id = $access('okta-client-id');
+    $private_key = $access('okta-private-key');
+}
+
+return [
+    // ...
+
+    'client_id' => $client_id,
+
+    // ...
+
+    'private_key' => $private_key,
+    'private_key_path' => env('OKTA_API_PRIVATE_KEY_PATH'),
+
+    // ...
+];
+```
+
+The client uses Application Default Credentials, such as the service account attached to Cloud Run, GKE, or Compute Engine. The service account needs the Secret Manager Secret Accessor role (`roles/secretmanager.secretAccessor`) on both secrets.
+
+##### Config Caching and Rotation
+
+The trade-off of this approach is that the secrets are fetched whenever Laravel loads its configuration, not when the client makes a request. How often that happens depends on whether your environment caches the config:
+
+- **Without `config:cache`:** The secrets manager is called every time the application boots, which includes each web request and each Artisan command. This adds latency to every request and counts against the provider's API quotas.
+- **With `config:cache`:** The secrets are fetched once when you run `php artisan config:cache`, and written in plain text to `bootstrap/cache/config.php`. Run it when you deploy or when a container starts, not when you build an image, so that the key isn't baked into the image.
+- **After you rotate a secret:** A cached config keeps the old value until you run `php artisan config:cache` again or redeploy. Without a cached config, the new value is used the next time the application boots. The `kid` changes with each new key, so update `OKTA_API_KEY_ID` at the same time, or store and fetch it the same way as the key.
+
+When the new key reaches the config, the client mints a new access token on the next request, since the token cache key includes a fingerprint of the key (see [Token Caching](#token-caching)).
+
+#### Load Secrets in a Connection Array
+
+If the credentials vary per tenant or change at runtime, fetch them in your own code and pass them in a per-request connection array instead. Each tenant can supply its own client ID and key. The example below uses Google Secret Manager, but any source works.
 
 ```php
 use BoldlyGrow\Okta\ApiClient;
@@ -1797,23 +1963,6 @@ $connection = [
 
 $users = ApiClient::get(uri: 'users', scope: 'okta.users.read', connection: $connection)->data;
 ```
-
-#### Resolve the Key in the Published Config
-
-If you use a single service app for the whole application, publish the config and set the key there instead of passing a connection array on every call. Either point the environment variable at a mounted file:
-
-```php
-OKTA_API_PRIVATE_KEY_PATH="/var/secrets/okta/private-key.pem"
-```
-
-Or resolve it dynamically in the published `config/okta-api-client.php`, since a config file is plain PHP:
-
-```php
-// config/okta-api-client.php (after php artisan vendor:publish --tag=okta-api-client)
-'private_key' => app(\App\Support\OktaKeyResolver::class)->pem(),
-```
-
-Loading a secret in the config file runs on every request and during `config:cache`, so have your resolver cache the value (and be aware `config:cache` freezes whatever it returns at build time). Passing the key in the connection array is usually the cleaner choice when the value is dynamic or per-tenant.
 
 ### Scopes and Admin Roles
 
@@ -1919,7 +2068,7 @@ Service apps support more than one registered public key, so you can rotate a ke
 
 1. Generate a new key pair with a new `kid` (see [Key Generation Options](#key-generation-options)).
 2. Add the new public key to the service app. Both keys are now active.
-3. Update the private key that you supply (the connection array value, the file at `private_key_path`, or `OKTA_API_PRIVATE_KEY`), and set `OKTA_API_KEY_ID` to the new `kid`.
+3. Update the private key that you supply (the secret in your secrets manager, the file at `private_key_path`, or `OKTA_API_PRIVATE_KEY`), and set `OKTA_API_KEY_ID` to the new `kid`. Restart or redeploy the application so that it loads the new values, and run `php artisan config:cache` again if you cache your config.
 4. After you confirm that requests work, deactivate and delete the old key in the app's **Public Keys** table.
 
 The token cache key includes the `kid`, so the first request after you change `OKTA_API_KEY_ID` mints a token with the new key.

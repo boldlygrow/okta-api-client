@@ -77,9 +77,10 @@ return [
      * cloud SDK dependencies.
      *
      *   1. `private_key` (OKTA_API_PRIVATE_KEY): an inline PEM string. This is
-     *      the primary mechanism. Resolve the key from your secrets manager in
-     *      your own code and pass it in the connection array, or set this value
-     *      after publishing the config. See the README for both patterns.
+     *      the primary mechanism. To use a secrets manager, have your platform
+     *      load the key into this environment variable at runtime. Otherwise,
+     *      fetch it in this file after publishing it, or pass it in a
+     *      connection array. See the README for examples.
      *   2. `private_key_path` (OKTA_API_PRIVATE_KEY_PATH): a filesystem path to
      *      a PEM file, for local development or a secret mounted as a file. A
      *      leading `~` is expanded to the home directory.
