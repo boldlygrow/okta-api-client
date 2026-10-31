@@ -13,6 +13,7 @@ step() {
     "$@"
 }
 
+step "composer"   "$SCRIPT_DIR/test_composer.sh"
 step "code_style" "$SCRIPT_DIR/test_code_style.sh"
 step "phpstan"    "$SCRIPT_DIR/test_phpstan.sh"
 step "unit_test"  "$SCRIPT_DIR/test_unit.sh"
