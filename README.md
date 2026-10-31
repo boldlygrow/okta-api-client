@@ -1,7 +1,5 @@
 # Okta API Client
 
-[[_TOC_]]
-
 ## Overview
 
 The Okta API Client is an open source [Composer](https://getcomposer.org/) package for use in Laravel applications for connecting to Okta for provisioning and deprovisioning of users, groups, applications, and other related functionality.
