@@ -293,7 +293,7 @@ The client reads these variables from your environment or `.env` file through th
 | `OKTA_API_PRIVATE_KEY_PATH` | **Option 1.** The path to the private key file. A leading `~` is expanded to your home directory. |
 | `OKTA_API_PRIVATE_KEY` | **Option 2.** The private key as an inline PEM string. Set this or `OKTA_API_PRIVATE_KEY_PATH`. This takes precedence if both are set. |
 | `OKTA_API_TEST_URI` | (Optional) The endpoint that `testConnection()` calls. Defaults to `org`, which needs the `okta.orgs.read` scope. |
-| `OKTA_API_DPOP` | (Optional) Set to `false` if your service app does not use Display Proof of Possession (DPoP) on the Okta application configuration. Defaults to `true`. |
+| `OKTA_API_DPOP` | (Optional) Set to `false` if your service app does not use Demonstrating Proof of Possession (DPoP) on the Okta application configuration. Defaults to `true`. |
 | `OKTA_API_TOKEN_CACHE_MINUTES` | (Optional) How long to cache each access token, from `1` to `59` minutes. Defaults to `59` (see [Token Caching](#token-caching)). |
 | `OKTA_API_EXCEPTIONS` | (Optional) Whether to throw exceptions for `4xx` and `5xx` responses. Defaults to `true`. |
 
@@ -339,7 +339,7 @@ $connection = [
     'key_id' => 'acme-portal-production-2026-10', // required
     'private_key' => $private_key_pem, // an inline PEM string (see Private Key Storage)
     // 'private_key_path' => '/var/secrets/okta/private-key.pem',
-    'dpop' => true, // if the service app requires DPoP (see Demonstrating Proof of Possession)
+    'dpop' => false, // only if the service app doesn't use DPoP, defaults to true (see Demonstrating Proof of Possession)
 ];
 ```
 
@@ -407,7 +407,7 @@ Rotate private keys and API tokens on a schedule, and whenever someone who had a
 | `The resolved private key is empty or is not a valid PEM-formatted private key.` | The key is in the OpenSSH format, has a passphrase, is a public key, or lost its line breaks in an inline value. | Check the key's first line against [Private Key Format](#private-key-format). |
 | `The private key file was not found or is not readable at (...)` | The path is wrong, or the user that runs PHP can't read the file. | Check the path in the message. A `~` is only expanded at the start of the path. |
 | `The token_cache_minutes (OKTA_API_TOKEN_CACHE_MINUTES) value must be a whole number between 1 and 59` | `OKTA_API_TOKEN_CACHE_MINUTES` is `0`, more than `59`, or not a number. | Set it to a whole number from `1` to `59`, or remove it to use the default. |
-| `Okta API OAuth token request error.` with `The Okta service app requires DPoP.` | The app requires DPoP, but the client doesn't have it enabled. | Set `OKTA_API_DPOP=true`, or `'dpop' => true` in the connection array. |
+| `Okta API OAuth token request error.` with `The Okta service app requires DPoP.` | The app requires DPoP, but `OKTA_API_DPOP` or the connection array `dpop` is set to `false`. | Remove the setting, or set it to `true`. DPoP is enabled by default. |
 | `Okta API OAuth token request error.` with another reason | The client ID is wrong, the public key isn't registered, the `kid` doesn't match, client authentication isn't set to **Public key / Private key**, or a requested scope isn't granted. | Compare `OKTA_API_KEY_ID` with the **Public Keys** table, and check that each scope you request is granted on the **Okta API Scopes** tab. |
 | `An OAuth scope is required but was not provided.` | OAuth is configured, but the request has no `scope` argument. | Add the `scope` argument to the request (see [Scopes and Admin Roles](#scopes-and-admin-roles)). |
 | `The OAuth access token was rejected.` | Okta returned a `401` for the access token, for example because it was revoked or the app's grants changed. | The client has already removed the token from the cache, so the next request mints a new one. If the error persists, check the app's granted scopes. |
@@ -2051,10 +2051,10 @@ Each token is cached for its full lifetime per unique scope set, so requesting s
 
 On the **General** tab of the service app, the **Require Demonstrating Proof of Possession (DPoP) header in token requests** setting binds each access token to a key pair held by the client ([RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449)). A leaked DPoP-bound access token cannot be replayed, because every request must also carry a single-use proof signed by the same key for that exact HTTP method and URL. We recommend leaving it enabled.
 
-When the setting is enabled, set `OKTA_API_DPOP=true` (or `'dpop' => true` in a [connection array](#connection-arrays)). If it is not set, the token request fails with an `UnauthorizedException` that explains the setting is required.
+The client uses DPoP by default. If the setting isn't enabled on the service app, set `OKTA_API_DPOP=false` (or `'dpop' => false` in a [connection array](#connection-arrays)). If the app requires DPoP and the client has it disabled, the token request fails with an `UnauthorizedException` that explains the setting is required.
 
 ```php
-OKTA_API_DPOP=true
+OKTA_API_DPOP=false
 ```
 
 No additional key management is needed. When DPoP is enabled, the client handles the protocol for you:
@@ -2116,7 +2116,7 @@ You can move an existing integration from an SSWS token to OAuth 2.0 without cha
 
 1. Create the service app, register a key, and grant scopes and an admin role (see [Quick Start: OAuth 2.0](#quick-start-oauth-20)).
 2. Add the `scope` argument to every `ApiClient` call. When OAuth is configured, a call without a scope throws a `ScopeException`.
-3. Set `OKTA_API_CLIENT_ID`, `OKTA_API_KEY_ID`, the private key variables, and `OKTA_API_DPOP` if the app requires it. When `OKTA_API_CLIENT_ID` is set, the client uses OAuth 2.0 and ignores `OKTA_API_TOKEN`.
+3. Set `OKTA_API_CLIENT_ID`, `OKTA_API_KEY_ID`, the private key variables, and `OKTA_API_DPOP=false` if the app doesn't use DPoP. When `OKTA_API_CLIENT_ID` is set, the client uses OAuth 2.0 and ignores `OKTA_API_TOKEN`.
 4. After you confirm that requests work, remove `OKTA_API_TOKEN` and revoke the token in Okta.
 
 ### Why Client Secrets Aren't Supported

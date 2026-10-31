@@ -59,6 +59,31 @@ it('retries the token request with the server nonce and a new client assertion w
         ->not->toBe(decodeJwt($first_request['client_assertion'])['claims']['jti']);
 });
 
+it('enables DPoP by default when the connection array omits the dpop key', function () {
+    Http::fake([
+        'example.okta.com/oauth2/v1/token' => Http::response(tokenResponseBody('DPoP')),
+    ]);
+
+    $connection = oauthConnection();
+    unset($connection['dpop']);
+
+    $headers = ApiToken::authorizationHeaders(
+        scope: 'okta.users.read',
+        connection: $connection,
+        http_method: 'GET',
+        http_url: 'https://example.okta.com/api/v1/users'
+    );
+
+    /** @var Request $token_request */
+    [$token_request] = Http::recorded()->sole();
+    expect($token_request->hasHeader('DPoP'))->toBeTrue();
+    expect($headers['Authorization'])->toBe('DPoP test-access-token');
+});
+
+it('enables DPoP by default in the package config', function () {
+    expect(config('okta-api-client.dpop'))->toBeTrue();
+});
+
 it('reuses the cached token and its DPoP key for later requests', function () {
     Http::fake([
         'example.okta.com/oauth2/v1/token' => Http::response(tokenResponseBody('DPoP')),

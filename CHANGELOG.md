@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **DPoP is enabled by default**
+    - `OKTA_API_DPOP` (the `dpop` config key) and the connection array `dpop` key now default to `true`. Both defaulted to `false` in 5.0.0.
+    - **Why:** A DPoP-bound access token cannot be replayed if it leaks, and we recommend leaving **Require Demonstrating Proof of Possession (DPoP) header in token requests** enabled on the Okta service app. The default now matches that recommendation.
+    - **How:** If your service app does not have the DPoP setting enabled, set `OKTA_API_DPOP=false`, or `'dpop' => false` in each connection array, before you upgrade. SSWS connections are unaffected.
+    - This is a minor release instead of a patch because OAuth connections that did not set `dpop` change behavior.
 - **The README recommends loading secrets into environment variables**
     - Most applications run in a container or on a VM, where the platform can load secrets manager values into `OKTA_API_CLIENT_ID` and `OKTA_API_PRIVATE_KEY` at runtime. Added examples for Amazon ECS with Parameter Store and Cloud Run with Secret Manager.
     - If your platform can't set environment variables from a secrets manager, fetch the secrets for the whole application in the published `config/okta-api-client.php`. Added examples for AWS Systems Manager Parameter Store and Google Secret Manager, with notes on config caching and secret rotation. This package still doesn't depend on either SDK.

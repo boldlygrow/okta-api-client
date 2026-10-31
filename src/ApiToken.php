@@ -162,7 +162,7 @@ class ApiToken
 
         $scopes = self::resolveScopes($scope);
 
-        $dpop = filter_var($validated_connection['dpop'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $dpop = filter_var($validated_connection['dpop'] ?? true, FILTER_VALIDATE_BOOLEAN);
 
         $encrypted_token = Cache::remember(
             key: self::cacheKey($validated_connection, $scopes, $dpop),
@@ -215,7 +215,7 @@ class ApiToken
         Cache::forget(self::cacheKey(
             validated_connection: $validated_connection,
             scopes: self::resolveScopes($scope),
-            dpop: filter_var($validated_connection['dpop'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            dpop: filter_var($validated_connection['dpop'] ?? true, FILTER_VALIDATE_BOOLEAN)
         ));
     }
 
