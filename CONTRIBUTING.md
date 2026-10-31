@@ -18,6 +18,18 @@ Before assigning your PR to a maintainer, please review the pipeline CI job outp
 
 All merge requests can be assigned to one or all of the maintainers at your discretion. It is helpful to add a comment with any context that the maintainer/reviewer should know or be on the look out for.
 
+### Changelog
+
+Release notes live in the root `CHANGELOG.md`, newest release first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with two project-specific additions.
+
+- Each release is an `h2` heading of the form `## [5.0.0] - 2026-10-31`, with a matching link reference at the bottom of the file. Because some historical git tags are two-component (`4.2`, `3.0`), those link references point at the real tag names even though the heading uses the full `X.Y.Z` label.
+- Categories are `h3` and use Keep a Changelog's vocabulary — **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security** — plus **Overview** and **Upgrade Steps**, which are reserved for major releases. Omit any category with nothing to report; do not write "none this release".
+- Deprecations and removals go in their own category. Do not bury them inside **Changed**, where nobody looking for them will find them.
+- Every non-trivial entry carries a `**Why:**` sub-bullet explaining the reasoning, and a `**How:**` sub-bullet wherever a consumer has to take action. This rationale is the point of the changelog — an entry that only restates the diff is not worth writing.
+- Start each entry that has details with a short bold headline that says what changed (ex. `**Exception messages include the reason that Okta returned**`), and put the details, `**Why:**`, and `**How:**` in sub-bullets underneath. Keep each sub-bullet to one or two sentences so the headlines can be skimmed. A one-line entry with no details does not need the bold.
+- Large releases may group entries under `h4` thematic subheads inside a category (see 5.0's **Added**).
+- Tag releases as `X.Y.Z` with no `v` prefix.
+
 ### Laravel Test Application
 
 You can create a new Laravel application for a specific version to perform local testing with. This allows you to easily use Tinkerwell for each

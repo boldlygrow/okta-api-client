@@ -125,7 +125,7 @@ OAuth 2.0 authentication requires no additional Composer packages; the JWT clien
 
 ### Upgrade Guide
 
-See the [changelog](https://github.com/boldlygrow/okta-api-client/tree/main/changelog) for release notes.
+See the [changelog](CHANGELOG.md) for release notes. If you are upgrading from `provisionesta/okta-api-client` (4.x), read the [5.0 release notes](CHANGELOG.md#500---2026-10-31) for the package rename, namespace change, and OAuth 2.0 authentication options.
 
 ### Add Composer Package
 
