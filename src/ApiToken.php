@@ -13,6 +13,7 @@ use BoldlyGrow\AuditLog\AuditLog;
 use BoldlyGrow\Okta\Exceptions\ConfigurationException;
 use BoldlyGrow\Okta\Exceptions\ScopeException;
 use BoldlyGrow\Okta\Exceptions\UnauthorizedException;
+use Closure;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -34,13 +35,16 @@ use Illuminate\Support\Str;
  * @link https://developer.okta.com/docs/guides/implement-oauth-for-okta-serviceapp/main/
  *
  * PRIVATE KEY RESOLUTION
- * The RSA private key used to sign the client assertion is provided in one of two ways:
+ * The client assertion is signed in one of three ways:
  *
  *   - `private_key`: an inline PEM string. This is the primary mechanism. To use a secrets manager, have your platform
  *     load the key into the `OKTA_API_PRIVATE_KEY` environment variable at runtime. Otherwise, fetch it in the
  *     published config file, or pass it in a connection array. See the README for examples.
  *   - `private_key_path`: a filesystem path to a PEM file (a leading `~` is expanded), suitable for local
  *     development or a secret mounted as a file.
+ *   - `signer`: a callable in a connection array that receives the JWT signing input and returns the raw RS256
+ *     signature. Use this when the private key can't leave a key management service or HSM, so the application never
+ *     holds it.
  *
  * This package intentionally does not integrate with any secrets manager. Retrieving the key is the responsibility
  * of the consuming application, which keeps this package independent of your storage choice and free of cloud SDK
@@ -168,8 +172,8 @@ class ApiToken
             key: self::cacheKey($validated_connection, $scopes, $dpop),
             ttl: self::cacheMinutes() * 60,
             callback: function () use ($validated_connection, $scopes, $dpop) {
-                // Resolve the private key only on a cache miss.
-                $private_key = self::getPrivateKeyContents($validated_connection);
+                // Resolve the signer only on a cache miss, so that a private key is only read when a token is minted.
+                $signer = self::resolveSigner($validated_connection);
 
                 // The DPoP key is cached with the token since every request presenting the token is signed with it.
                 $dpop_private_key = $dpop ? DpopProof::generatePrivateKey() : null;
@@ -178,7 +182,7 @@ class ApiToken
                     url: $validated_connection['url'],
                     client_id: $validated_connection['client_id'],
                     key_id: $validated_connection['key_id'],
-                    private_key: $private_key,
+                    signer: $signer,
                     scopes: $scopes,
                     dpop_private_key: $dpop_private_key
                 );
@@ -224,7 +228,7 @@ class ApiToken
      * cache hit.
      *
      * `key_ref` is the file path when using private_key_path, or a fingerprint of the inline key, so rotating the key
-     * busts the cache. `dpop` is included so toggling it never reuses a token minted the other way, since a DPoP-bound
+     * busts the cache. A signer has no key material to fingerprint, so a rotated key is told apart by its `key_id`. `dpop` is included so toggling it never reuses a token minted the other way, since a DPoP-bound
      * token cannot be presented as a Bearer token.
      *
      * @param  array<string, mixed>  $validated_connection  The connection array from validateConnectionArray()
@@ -302,8 +306,13 @@ class ApiToken
                 'url' => ['required', 'url:https'],
                 'client_id' => ['required', 'string'],
                 'key_id' => ['required', 'string'],
-                'private_key' => ['nullable', 'string', 'required_without:private_key_path'],
-                'private_key_path' => ['nullable', 'string', 'required_without:private_key'],
+                'private_key' => ['nullable', 'string', 'required_without_all:private_key_path,signer'],
+                'private_key_path' => ['nullable', 'string', 'required_without_all:private_key,signer'],
+                'signer' => ['nullable', function (string $attribute, mixed $value, Closure $fail): void {
+                    if (! is_callable($value)) {
+                        $fail('The signer must be a callable that returns the raw signature.');
+                    }
+                }],
                 'dpop' => ['nullable', 'boolean'],
             ],
             messages: [
@@ -368,6 +377,29 @@ class ApiToken
         }
 
         return $scopes;
+    }
+
+    /**
+     * Resolve the callable that signs the JWT client assertion.
+     *
+     * A `signer` in the connection array signs with a key that the application doesn't hold (ex. a key in a key
+     * management service). Otherwise, the private key is resolved and the signature is created locally.
+     *
+     * @param  array<string, mixed>  $connection  The connection array from validateConnectionArray()
+     *
+     * @return callable(string): mixed
+     *
+     * @throws ConfigurationException
+     */
+    private static function resolveSigner(array $connection): callable
+    {
+        if (! empty($connection['signer'])) {
+            return $connection['signer'];
+        }
+
+        $private_key = self::getPrivateKeyContents($connection);
+
+        return fn (string $signing_input): string => self::sign($signing_input, $private_key);
     }
 
     /**
@@ -458,15 +490,15 @@ class ApiToken
      *
      * @link https://developer.okta.com/docs/guides/implement-oauth-for-okta-serviceapp/main/#create-and-sign-the-jwt
      *
-     * @param  string  $url
-     *                               The Okta org base URL (ex. https://your-org.okta.com)
-     * @param  string  $client_id
-     *                               The service app client_id (used for both `iss` and `sub`)
-     * @param  string  $key_id
-     *                               The `kid` of the registered public key. Included in the JWT header so Okta can select the
-     *                               correct verification key from the app's JWKSet. Okta rejects an assertion without it.
-     * @param  string  $private_key
-     *                               PEM-formatted RSA private key
+     * @param  string                   $url
+     *                                              The Okta org base URL (ex. https://your-org.okta.com)
+     * @param  string                   $client_id
+     *                                              The service app client_id (used for both `iss` and `sub`)
+     * @param  string                   $key_id
+     *                                              The `kid` of the registered public key. Included in the JWT header so Okta can select the
+     *                                              correct verification key from the app's JWKSet. Okta rejects an assertion without it.
+     * @param  callable(string): mixed  $signer
+     *                                              Receives the JWT signing input and returns the raw signature
      *
      * @throws ConfigurationException
      */
@@ -474,7 +506,7 @@ class ApiToken
         string $url,
         string $client_id,
         string $key_id,
-        string $private_key
+        callable $signer
     ): string {
         $header = [
             'alg' => self::DEFAULT_ALGORITHM,
@@ -496,7 +528,22 @@ class ApiToken
         $signing_input = self::base64UrlEncode((string) json_encode($header))
             . '.' . self::base64UrlEncode((string) json_encode($claims));
 
-        $signature = self::sign($signing_input, $private_key);
+        $signature = $signer($signing_input);
+
+        if (! is_string($signature) || $signature === '') {
+            $reason = 'The signer did not return a raw signature for the JWT client assertion.';
+
+            AuditLog::create(
+                errors: [$reason],
+                event_type: 'okta.api.auth.error.signature',
+                level: 'critical',
+                message: 'Error',
+                method: __METHOD__,
+                transaction: true
+            );
+
+            throw new ConfigurationException('Okta API OAuth error. (Reason) ' . $reason);
+        }
 
         return $signing_input . '.' . self::base64UrlEncode($signature);
     }
@@ -580,12 +627,12 @@ class ApiToken
      *
      * @link https://developer.okta.com/docs/guides/implement-oauth-for-okta-serviceapp/main/#get-an-access-token
      *
-     * @param  string       $url               The Okta org base URL (ex. https://your-org.okta.com)
-     * @param  string       $client_id         The service app client_id
-     * @param  string       $key_id            The `kid` of the registered public key
-     * @param  string       $private_key       PEM-formatted RSA private key used to sign the client assertion
-     * @param  string       $scopes            The space-delimited OAuth scope string
-     * @param  string|null  $dpop_private_key  PEM-formatted ephemeral DPoP key, or null when DPoP is disabled
+     * @param  string                   $url               The Okta org base URL (ex. https://your-org.okta.com)
+     * @param  string                   $client_id         The service app client_id
+     * @param  string                   $key_id            The `kid` of the registered public key
+     * @param  callable(string): mixed  $signer            Receives the JWT signing input and returns the raw signature
+     * @param  string                   $scopes            The space-delimited OAuth scope string
+     * @param  string|null              $dpop_private_key  PEM-formatted ephemeral DPoP key, or null when DPoP is disabled
      *
      * @return array{access_token: string, token_type: string}
      *
@@ -596,7 +643,7 @@ class ApiToken
         string $url,
         string $client_id,
         string $key_id,
-        string $private_key,
+        callable $signer,
         string $scopes,
         ?string $dpop_private_key
     ): array {
@@ -622,7 +669,7 @@ class ApiToken
                         url: $url,
                         client_id: $client_id,
                         key_id: $key_id,
-                        private_key: $private_key
+                        signer: $signer
                     ),
                 ]
             );

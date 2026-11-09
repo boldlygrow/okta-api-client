@@ -199,3 +199,101 @@ it('rejects a token_cache_minutes value that is not between 1 and 59', function 
     'longer than the token lifetime' => 60,
     'not a number' => 'an hour',
 ]);
+
+it('signs the client assertion with a signer when the connection has no private key', function () {
+    Http::fake(['example.okta.com/oauth2/v1/token' => Http::response(tokenResponseBody('Bearer'))]);
+    $signed_input = null;
+
+    ApiToken::create(
+        scope: 'okta.users.read',
+        connection: oauthConnection([
+            'private_key' => null,
+            'signer' => function (string $signing_input) use (&$signed_input): string {
+                $signed_input = $signing_input;
+
+                return 'raw-signature-bytes';
+            },
+        ])
+    );
+
+    /** @var Request $token_request */
+    [$token_request] = Http::recorded()->sole();
+    [$header, $claims, $signature] = explode('.', $token_request['client_assertion']);
+    expect($signed_input)->toBe($header . '.' . $claims);
+    expect(base64_decode(strtr($signature, '-_', '+/')))->toBe('raw-signature-bytes');
+    expect(decodeJwt($token_request['client_assertion'])['header'])->toHaveKey('kid', 'test-kid');
+});
+
+it('uses the signer instead of a private key when the connection has both', function () {
+    Http::fake(['example.okta.com/oauth2/v1/token' => Http::response(tokenResponseBody('Bearer'))]);
+
+    ApiToken::create(
+        scope: 'okta.users.read',
+        connection: oauthConnection(['signer' => fn (string $signing_input): string => 'from-the-signer'])
+    );
+
+    [$token_request] = Http::recorded()->sole();
+    $signature = explode('.', $token_request['client_assertion'])[2];
+    expect(base64_decode(strtr($signature, '-_', '+/')))->toBe('from-the-signer');
+});
+
+it('only calls the signer when a token is minted', function () {
+    Http::fake(['example.okta.com/oauth2/v1/token' => Http::response(tokenResponseBody('Bearer'))]);
+    $calls = 0;
+    $connection = oauthConnection([
+        'private_key' => null,
+        'signer' => function () use (&$calls): string {
+            $calls++;
+
+            return 'raw-signature-bytes';
+        },
+    ]);
+
+    ApiToken::create(scope: 'okta.users.read', connection: $connection);
+    ApiToken::create(scope: 'okta.users.read', connection: $connection);
+
+    expect($calls)->toBe(1);
+});
+
+it('mints a new token when a signer connection rotates to a new key_id', function () {
+    Http::fake(['example.okta.com/oauth2/v1/token' => Http::response(tokenResponseBody('Bearer'))]);
+    $connection = oauthConnection(['private_key' => null, 'signer' => fn (): string => 'raw-signature-bytes']);
+
+    ApiToken::create(scope: 'okta.users.read', connection: $connection);
+    ApiToken::create(scope: 'okta.users.read', connection: [...$connection, 'key_id' => 'rotated-kid']);
+
+    Http::assertSentCount(2);
+});
+
+it('rejects a signer that is not callable', function () {
+    Http::fake();
+
+    expect(fn () => ApiToken::create(
+        scope: 'okta.users.read',
+        connection: oauthConnection(['private_key' => null, 'signer' => 'not-a-callable'])
+    ))->toThrow(ConfigurationException::class, 'The signer must be a callable');
+
+    Http::assertNothingSent();
+});
+
+it('throws a ConfigurationException when the signer does not return a signature', function (mixed $signature) {
+    Http::fake();
+
+    expect(fn () => ApiToken::create(
+        scope: 'okta.users.read',
+        connection: oauthConnection(['private_key' => null, 'signer' => fn (): mixed => $signature])
+    ))->toThrow(ConfigurationException::class, 'The signer did not return a raw signature');
+
+    Http::assertNothingSent();
+})->with([[''], [null], [false]]);
+
+it('still requires a private key when the connection has no signer', function () {
+    Http::fake();
+
+    expect(fn () => ApiToken::create(
+        scope: 'okta.users.read',
+        connection: oauthConnection(['private_key' => null])
+    ))->toThrow(ConfigurationException::class);
+
+    Http::assertNothingSent();
+});

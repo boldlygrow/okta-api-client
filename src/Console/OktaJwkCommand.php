@@ -9,6 +9,8 @@
 
 namespace BoldlyGrow\Okta\Console;
 
+use BoldlyGrow\Okta\Exceptions\ConfigurationException;
+use BoldlyGrow\Okta\KeyPair;
 use BoldlyGrow\Okta\PublicKeyJwk;
 use Illuminate\Console\Command;
 
@@ -72,33 +74,20 @@ class OktaJwkCommand extends Command
      */
     private function generateAndPrint(?string $kid): int
     {
-        $bits = max(2048, (int) $this->option('bits'));
+        $bits = max(KeyPair::MINIMUM_BITS, (int) $this->option('bits'));
 
-        $resource = openssl_pkey_new([
-            'private_key_type' => OPENSSL_KEYTYPE_RSA,
-            'private_key_bits' => $bits,
-        ]);
-
-        if ($resource === false) {
-            $this->error('Failed to generate an RSA key pair. Check that the openssl extension is available.');
+        try {
+            $key_pair = KeyPair::generate($kid, $bits);
+        } catch (ConfigurationException $exception) {
+            $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
-
-        $details = openssl_pkey_get_details($resource);
-
-        if ($details === false || ! openssl_pkey_export($resource, $private_pem)) {
-            $this->error('Failed to export the generated RSA key pair.');
-
-            return self::FAILURE;
-        }
-
-        $public_pem = $details['key'];
 
         $out = $this->option('out');
         $out = is_string($out) ? $out : '';
 
-        if (file_put_contents($out, $private_pem) === false) {
+        if (file_put_contents($out, $key_pair['private_key']) === false) {
             $this->error('Could not write the private key to (' . $out . ').');
 
             return self::FAILURE;
@@ -111,7 +100,7 @@ class OktaJwkCommand extends Command
         $this->newLine();
         $this->line('Register this public JWK in your Okta service app (Add key):');
         $this->newLine();
-        $this->line(self::toJson(PublicKeyJwk::fromPem($public_pem, $kid)));
+        $this->line(self::toJson($key_pair['public_jwk']));
 
         return self::SUCCESS;
     }
