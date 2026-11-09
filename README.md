@@ -854,6 +854,14 @@ foreach($groups as $group) {
 }
 ```
 
+#### Reading only the first page
+
+To check whether a record exists or whether you can read an endpoint at all, set `paginate` to `false`. The API Client returns the first page and doesn't request the rest, so a small `limit` stays a single request.
+
+```php
+$groups = ApiClient::get(uri: 'groups', data: ['limit' => 1], paginate: false)->data;
+```
+
 #### Caching responses
 
 The API Client does not use caching to avoid any constraints with you being able to control which endpoints you cache.

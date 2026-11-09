@@ -169,6 +169,8 @@ class ApiClient
      * @param  string|null           $scope       (optional) A space-delimited OAuth scope string
      *                                            (ex. `okta.users.read`). This is required when authenticating with
      *                                            OAuth and ignored when using an SSWS token.
+     * @param  bool                  $paginate    (optional) Whether to follow every page of results and merge
+     *                                            them. Set to false to return only the first page.
      *
      * @return ApiResponse See parseApiResponse() method. The content and schema of the data array can
      *                     be found in the API documentation for the endpoint.
@@ -178,6 +180,7 @@ class ApiClient
         array $data = [],
         array $connection = [],
         ?string $scope = null,
+        bool $paginate = true,
     ): object {
         $connection = self::validateConnection($connection);
         $event_ms = now();
@@ -213,7 +216,7 @@ class ApiClient
         );
 
         // If the response is a paginated response, the `link` header has the URL of the next page
-        $paginated_url = self::generateNextPaginatedResultUrl($response->headers);
+        $paginated_url = $paginate ? self::generateNextPaginatedResultUrl($response->headers) : null;
 
         if ($paginated_url !== null) {
             AuditLog::create(
