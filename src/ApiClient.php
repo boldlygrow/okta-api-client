@@ -142,7 +142,7 @@ class ApiClient
         }
 
         // Merge validated keys over the source connection so OAuth keys that have no rule here
-        // (key_id, private_key, private_key_path) survive to getRequestHeaders() and
+        // (key_id, private_key, private_key_path, signer) survive to getRequestHeaders() and
         // ApiToken::create(). $validator->validated() alone would drop them.
         return array_merge($connection, $validator->validated());
     }

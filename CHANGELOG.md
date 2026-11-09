@@ -4,6 +4,23 @@ All notable changes to `boldlygrow/okta-api-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - 2026-11-08
+
+### Overview
+
+This release lets you sign the OAuth client assertion without giving the client your private key, and adds a method to generate a key pair in your own code. Nothing changes unless you use one of them.
+
+### Added
+
+- **`signer` connection array option**
+    - A callable that receives the JWT signing input and returns the raw RS256 signature. When it's set, the client doesn't read `private_key` or `private_key_path`.
+    - **Why:** A key management service or HSM can hold a private key that can't be exported, so the private key never reaches your application's memory.
+    - **How:** Add `signer` to the connection array instead of `private_key`. See [Signing Without the Private Key](README.md#signing-without-the-private-key).
+- **`KeyPair::generate()`**
+    - Returns a new RSA private key as a PEM string and its public key as a JWK.
+    - **Why:** Generating a key was only possible through the `okta-api-client:jwk --generate` command, so code that needed a key pair had to repeat its `openssl` calls.
+    - **How:** Call `KeyPair::generate(kid: 'your-key-id')`. The command now uses this method and behaves the same.
+
 ## [6.0.0] - 2026-10-31
 
 ### Overview
@@ -478,6 +495,7 @@ This is the first release of the Okta SDK that is maintained by GitLab IT Engine
     - This affects only developers who tested a pre-release from a branch (ex. `dev-main`) and published the configuration file. They see errors that the `config('glamstack-okta.log_channels')` array does not exist.
     - **How:** Back up the configuration file, publish it again by following the README, and copy any customized keys and values to the new array schema. No `.env` changes are needed unless you customized the variable names.
 
+[6.1.0]: https://github.com/boldlygrow/okta-api-client/compare/6.0.0...6.1.0
 [6.0.0]: https://github.com/boldlygrow/okta-api-client/compare/5.1.0...6.0.0
 [5.1.0]: https://github.com/boldlygrow/okta-api-client/compare/5.0.0...5.1.0
 [5.0.0]: https://github.com/boldlygrow/okta-api-client/compare/4.2...5.0.0

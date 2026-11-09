@@ -337,6 +337,7 @@ $connection = [
     'key_id' => 'acme-portal-production-2026-10', // required
     'private_key' => $private_key_pem, // an inline PEM string (see Private Key Storage)
     // 'private_key_path' => '/var/secrets/okta/private-key.pem',
+    // 'signer' => $signer, // signs with a key the application doesn't hold (see Signing Without the Private Key)
     'dpop' => false, // only if the service app doesn't use DPoP, defaults to true (see Demonstrating Proof of Possession)
 ];
 ```
@@ -1557,7 +1558,7 @@ sequenceDiagram
 
 The first time a scope is requested, the client gets an access token:
 
-1. **Resolve the private key.** The client reads `private_key` (an inline PEM string) or the file at `private_key_path`, then checks that PHP's OpenSSL extension can parse it (see [Private Key Format](#private-key-format)).
+1. **Resolve the private key.** The client reads `private_key` (an inline PEM string) or the file at `private_key_path`, unless the connection array has a `signer` (see [Signing Without the Private Key](#signing-without-the-private-key)), then checks that PHP's OpenSSL extension can parse it (see [Private Key Format](#private-key-format)).
 2. **Sign a client assertion.** The client builds a JWT and signs it with the private key using RS256:
 
     | Part | Field | Value |
@@ -1714,24 +1715,18 @@ The copy's first line changes to `-----BEGIN PRIVATE KEY-----`. If the key has a
 You can generate the key pair in PHP, for example in a key rotation job or a provisioning command. This uses the same `openssl` functions as the Artisan command, so no additional packages are needed:
 
 ```php
-use BoldlyGrow\Okta\PublicKeyJwk;
+use BoldlyGrow\Okta\KeyPair;
 
-$key = openssl_pkey_new([
-    'private_key_type' => OPENSSL_KEYTYPE_RSA,
-    'private_key_bits' => 2048,
-]);
+$key_pair = KeyPair::generate(kid: 'acme-portal-production-2026-10');
 
 // A "-----BEGIN PRIVATE KEY-----" string to store in your secrets manager
-openssl_pkey_export($key, $private_key_pem);
+$private_key_pem = $key_pair['private_key'];
 
 // The JWK to register in the Okta service app
-$public_key_pem = openssl_pkey_get_details($key)['key'];
-$jwk = PublicKeyJwk::fromPem($public_key_pem, kid: 'acme-portal-production-2026-10');
-
-echo json_encode($jwk, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+echo json_encode($key_pair['public_jwk'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 ```
 
-`openssl_pkey_new()` returns `false` if the `openssl` extension can't generate a key, so check the result in production code.
+`KeyPair::generate()` throws a `ConfigurationException` if the `openssl` extension can't generate a key. The key size defaults to 2048 bits, which is also the minimum, and you can pass a larger size with the `bits` argument.
 
 Store `$private_key_pem` in your secrets manager and load it at runtime (see [Private Key Storage](#private-key-storage)). For local development, you can write it to a file outside your repository instead:
 
@@ -1750,6 +1745,41 @@ File::chmod($path, 0600);
 ```php
 $jwk = PublicKeyJwk::fromPemFile('okta-public-key.pem', kid: 'acme-portal-production-2026-10');
 ```
+
+### Signing Without the Private Key
+
+A key management service or HSM can hold a private key that can't be exported. Your application sends the service the data to sign, and the service returns the signature, so the private key is never in your application's memory.
+
+To use one, add a `signer` to the connection array instead of `private_key`. The signer is a callable that receives the JWT signing input as a string and returns the raw RS256 signature as a binary string. The example below signs with an RSA key in Cloud KMS:
+
+```php
+use Google\Cloud\Kms\V1\AsymmetricSignRequest;
+use Google\Cloud\Kms\V1\Client\KeyManagementServiceClient;
+use Google\Cloud\Kms\V1\Digest;
+
+$connection = [
+    'url' => 'https://mycompany.okta.com',
+    'client_id' => '0oaB1c2D3e5F6g7H8i9j',
+    'key_id' => 'acme-portal-production-2026-10', // required
+    'signer' => function (string $signing_input) use ($key_version_name): string {
+        $response = (new KeyManagementServiceClient)->asymmetricSign(
+            (new AsymmetricSignRequest)
+                ->setName($key_version_name)
+                ->setDigest((new Digest)->setSha256(hash('sha256', $signing_input, true)))
+        );
+
+        return $response->getSignature();
+    },
+];
+```
+
+The key must be an RSA key that signs with SHA-256 and PKCS#1 v1.5, such as the `RSA_SIGN_PKCS1_2048_SHA256` algorithm in Cloud KMS, because the client assertion uses RS256.
+
+- The signer is only called when the client needs a new access token. A cached token doesn't call it again (see [Token Caching](#token-caching)).
+- The cached token is looked up by `key_id`, so use a new `key_id` when you rotate to a new key.
+- A signer only works in a connection array, because a callable can't be stored in the configuration file.
+- DPoP proofs are still signed locally with a short-lived key that the client generates, so the signer isn't called for them.
+- If a signer returns anything other than a non-empty string, the client throws a `ConfigurationException` and doesn't request a token.
 
 ### Private Key Format
 
