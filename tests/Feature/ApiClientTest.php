@@ -235,6 +235,25 @@ it('logs the number of combined records when the paginated results are finished'
         ->once();
 });
 
+it('returns only the first page when pagination is off', function () {
+    Http::fake([
+        'example.okta.com/api/v1/groups?*' => Http::response([['id' => '00g1']], 200, ['link' => [
+            '<https://example.okta.com/api/v1/groups?limit=1>; rel="self"',
+            '<https://example.okta.com/api/v1/groups?after=00g1&limit=1>; rel="next"',
+        ]]),
+    ]);
+
+    $response = ApiClient::get(
+        uri: 'groups',
+        data: ['limit' => 1],
+        connection: ['url' => 'https://example.okta.com', 'token' => str_repeat('a', 42)],
+        paginate: false
+    );
+
+    expect($response->data)->toHaveCount(1);
+    Http::assertSentCount(1);
+});
+
 it('reports a rejected SSWS token with SSWS guidance when the config uses OAuth', function () {
     config()->set('okta-api-client.client_id', '0oaTESTCLIENT');
     Http::fake([

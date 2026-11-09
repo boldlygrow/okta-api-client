@@ -4,6 +4,19 @@ All notable changes to `boldlygrow/okta-api-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-11-09
+
+### Overview
+
+This release lets a `get()` request stop after the first page of results.
+
+### Added
+
+- **`paginate` argument of `ApiClient::get()`**
+    - Set it to `false` to return only the first page. It defaults to `true`, so existing calls still follow every page.
+    - **Why:** A request with a small `limit` still followed every `next` link, so reading one record from a large org made one request per record.
+    - **How:** Pass `paginate: false`. See [Reading only the first page](README.md#reading-only-the-first-page).
+
 ## [6.1.0] - 2026-11-08
 
 ### Overview
@@ -495,6 +508,7 @@ This is the first release of the Okta SDK that is maintained by GitLab IT Engine
     - This affects only developers who tested a pre-release from a branch (ex. `dev-main`) and published the configuration file. They see errors that the `config('glamstack-okta.log_channels')` array does not exist.
     - **How:** Back up the configuration file, publish it again by following the README, and copy any customized keys and values to the new array schema. No `.env` changes are needed unless you customized the variable names.
 
+[6.2.0]: https://github.com/boldlygrow/okta-api-client/compare/6.1.0...6.2.0
 [6.1.0]: https://github.com/boldlygrow/okta-api-client/compare/6.0.0...6.1.0
 [6.0.0]: https://github.com/boldlygrow/okta-api-client/compare/5.1.0...6.0.0
 [5.1.0]: https://github.com/boldlygrow/okta-api-client/compare/5.0.0...5.1.0
